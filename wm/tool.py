@@ -66,11 +66,11 @@ class DataTool(object):
     def greedy_search(self, outputs):
         outidx = [int(np.argmax(logit, axis=0)) for logit in outputs]
         #print (outidx)
-        if self.EOS_ID in outidx:
-            outidx = outidx[:outidx.index(self.EOS_ID)]
+        if self.__EOS_ID in outidx:
+            outidx = outidx[:outidx.index(self.__EOS_ID)]
 
-        sentence = self.idxes2sen(outidx)
-        sentence = " ".join(sentence)
+        chars = self.idxes2chars(outidx)
+        sentence = " ".join(chars)
         return sentence
 
     def load_dic(self, file_dir, if_return=False):
@@ -98,7 +98,7 @@ class DataTool(object):
         '''
         loading  training data, including vocab, inverting vocab and corpus
         '''
-        if not self.vocab:
+        if not self.__vocab:
             self.load_dic(file_dir)    
 
         corpus_file = open(file_dir + '/' + trainfile, 'rb')
@@ -130,83 +130,139 @@ class DataTool(object):
 
     def build_batches(self, data, batch_size):
         batched_data = []
-        batch_num = int(np.ceil(len(data) / batch_size))
-
+        batch_num = int(np.ceil(len(data) / float(batch_size)))  
         for bi in range(0, batch_num):
             instances = data[bi*batch_size : (bi+1)*batch_size]
             if len(instances) < batch_size:
-                instances = instances + random.sample(data, batch_size-len(instances))
+                instances = instances + random.sample(data, batch_size - len(instances))
+
+            # generate all batch data
             data_dic = {}
-            all_dec_inps = []
-            all_trg_weights = []
+            all_enc_inps, all_dec_inps, all_trg_weights = [], [], []
+            all_enc_mask, all_write_mask = [], []
+            all_len_inps, all_ph_inps = [], []
+
+            # build sentence batch
             poems = [instance[1] for instance in instances] # all poems
-            for i in xrange(0, self.sens_num):
-                lines = [poem[i] for poem in poems]
-                batch_dec_inps, batch_weights, len_inps = self.get_batch_sentence(lines, batch_size)
+            genre_patterns = [instance[2] for instance in instances]
+            for i in xrange(-1, self.__sens_num-1):
+                if i <0:
+                    line0 = [[] for poem in poems]
+                else:
+                    line0 = [poem[i] for poem in poems]
+                
+                line1 = [poem[i+1] for poem in poems]
+                gls = [pattern[i+1] for pattern in genre_patterns]
+
+                batch_enc_inps, batch_dec_inps, batch_weights, enc_mask, len_inps, \
+                    ph_inps, batch_write_mask = self.get_batch_sentence(line0, line1, gls, batch_size)
+
+                all_enc_inps.append(batch_enc_inps)
                 all_dec_inps.append(batch_dec_inps)
                 all_trg_weights.append(batch_weights)
+                all_enc_mask.append(enc_mask)
+                all_len_inps.append(len_inps)
+                all_ph_inps.append(ph_inps)
+                all_write_mask.append(batch_write_mask)
 
-            data_dic['decoder_inputs'] = all_dec_inps
-            data_dic['target_weights'] = all_trg_weights
-            data_dic['len_inputs'] = len_inps
+            #print (np.shape(all_gl_inputs))
+
+            data_dic['enc_inps'] = all_enc_inps
+            data_dic['dec_inps'] = all_dec_inps
+            data_dic['trg_weights'] = all_trg_weights
+            data_dic['enc_mask'] = all_enc_mask
+            data_dic['ph_inps'] = all_ph_inps
+            data_dic['len_inps'] = all_len_inps
+            data_dic['write_masks'] = all_write_mask
 
             # build key batch
             keysvec = [instance[0] for instance in instances]
-            key_inputs = [[] for x in xrange(self.key_slots)]
+            key_inputs = [[] for x in xrange(self.hps.key_slots)]
             key_mask = []
-                
+            
             for i in range(0, batch_size):
                 keys = keysvec[i] # batch_size * at most 4
-                mask = [1.0]*len(keys) + [0.0]*(self.key_slots-len(keys))
-                mask = np.reshape(mask, [self.key_slots, 1])
+                mask = [1.0]*len(keys) + [0.0]*(self.hps.key_slots-len(keys))
+                mask = np.reshape(mask, [self.hps.key_slots, 1])
                 key_mask.append(mask)
                 for step in xrange(0, len(keys)):
                     key = keys[step]
                     key_inputs[step].append(key + [self.PAD_ID] * (2-len(key)))
-                for step in xrange(0, self.key_slots-len(keys)):
+                for step in xrange(0, self.hps.key_slots-len(keys)):
                     key_inputs[len(keys)+step].append([self.PAD_ID] * 2)
 
             # key_inputs: key_slots, [id1, id2], batch_size
-            batch_key_inputs = [[] for x in xrange(self.key_slots)]
-            for step in xrange(0, self.key_slots):
+            batch_key_inputs = [[] for x in xrange(self.hps.key_slots)]
+            for step in xrange(0, self.hps.key_slots):
                 batch_key_inputs[step].append(np.array([key_inputs[step][i][0] for i in xrange(batch_size)]))
                 batch_key_inputs[step].append(np.array([key_inputs[step][i][1] for i in xrange(batch_size)]))
 
             key_mask = np.array(key_mask)
+
             data_dic['key_mask'] = key_mask
             data_dic['key_inputs'] = batch_key_inputs
+
             batched_data.append(data_dic)
 
         return batched_data, batch_num
 
-    def get_batch_sentence(self, outputs, batch_size):
-        assert  len(outputs) == batch_size
-        decoder_size = self.sen_len
-        decoder_inputs = []
+    def get_batch_sentence(self, inputs, outputs, gls, batch_size, bucket_id=0):
+        assert len(inputs) == len(outputs) == batch_size
+        encoder_size, decoder_size = self.buckets[bucket_id]
+        encoder_inputs, decoder_inputs = [], []
+        gl_inputs = []
+        encoder_mask = []
         len_inputs = []
+        write_mask = []
 
         # Get a random batch of encoder and decoder inputs from data,
         # pad them if needed, reverse encoder inputs and add GO to decoder.
         for i in xrange(batch_size):
-            yan = len(outputs[i])
-            #print (outputs[i])
-            assert yan == 5 or yan == 7
-            if yan == 5:
-                len_inputs.append([0.0, 1.0])
-            else:
-                len_inputs.append([1.0, 0.0])
-
+            encoder_input = inputs[i]
             decoder_input = outputs[i] + [self.EOS_ID]
+            gl = gls[i]
+
+            # Encoder inputs are padded and then reversed.
+            encoder_pad_size = encoder_size - len(encoder_input)
+            encoder_pad = [self.PAD_ID] * encoder_pad_size
+            encoder_inputs.append(encoder_input + encoder_pad)
+            mask = [1.0] * (len(encoder_input)) + [0.0] * (encoder_pad_size)
+            mask = np.reshape(mask, [encoder_size, 1])
+            encoder_mask.append(mask)
+            write_mask.append(mask)
 
             # Decoder inputs get an extra "GO" symbol, and are padded then.
             decoder_pad_size = decoder_size - len(decoder_input) - 1
             decoder_inputs.append([self.GO_ID] + decoder_input +
                                   [self.PAD_ID] * decoder_pad_size)
 
-        # Now we create batch-major vectors from the data selected above.
-        batch_decoder_inputs, batch_weights = [], []
+            #print (decoder_inputs[-1])
+            #print (" ".join([self.ivocab[wid] for wid in decoder_inputs[-1]]))
+            gl_inputs.append(gl+[0]*(decoder_size-len(gl)))
+            #print (gl_inputs[-1])
 
-        # Batch decoder inputs are re-indexed decoder_inputs, we create weights.
+
+            len_input = range(len(decoder_input)+1, 0, -1) + [0]*(decoder_pad_size)
+            #print(len_input)
+            #tt = input(">")
+            len_inputs.append(len_input)
+
+        # Now we create batch-major vectors from the data selected above.
+        batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
+        batch_gl_inputs = []
+        batch_write_mask = []
+
+        # Batch encoder inputs are just re-indexed encoder_inputs.
+        for length_idx in xrange(encoder_size):
+            batch_encoder_inputs.append(np.array([encoder_inputs[batch_idx][length_idx]
+                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
+            batch_gl_inputs.append(np.array([gl_inputs[batch_idx][length_idx]
+                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
+            batch_write_mask.append(np.array([write_mask[batch_idx][length_idx]
+                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
+
+        # Batch decoder inputs are re-indexed decoder_inputs, we create
+        # weights.
         for length_idx in xrange(decoder_size):
             batch_decoder_inputs.append(np.array([decoder_inputs[batch_idx][length_idx]
                                                   for batch_idx in xrange(batch_size)], dtype=np.int32))
@@ -224,7 +280,13 @@ class DataTool(object):
 
             batch_weights.append(batch_weight)
 
-        return batch_decoder_inputs, batch_weights, len_inputs
+        #
+        encoder_mask = np.array(encoder_mask)
+        len_inputs = np.transpose(np.array(len_inputs))
+        gl_inputs = np.transpose(np.array(gl_inputs))
+        #print ("_____________")
+        return batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_mask, len_inputs, gl_inputs, batch_write_mask
+
 
     ''' generate batch input for batch keywords '''
     def build_batch_key_beam(self, keys, batch_size = 10):

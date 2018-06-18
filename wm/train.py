@@ -6,7 +6,6 @@ import math
 import os
 import random
 import time
-import cPickle
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -45,169 +44,6 @@ class PoemTrainer(object):
         t = input(">")
 
 
-    def get_batch_sentence(self, inputs, outputs, gls, batch_size, bucket_id=0):
-        assert len(inputs) == len(outputs) == batch_size
-        encoder_size, decoder_size = self.buckets[bucket_id]
-        encoder_inputs, decoder_inputs = [], []
-        gl_inputs = []
-        encoder_mask = []
-        len_inputs = []
-        write_mask = []
-
-        # Get a random batch of encoder and decoder inputs from data,
-        # pad them if needed, reverse encoder inputs and add GO to decoder.
-        for i in xrange(batch_size):
-            encoder_input = inputs[i]
-            decoder_input = outputs[i] + [self.EOS_ID]
-            gl = gls[i]
-
-            # Encoder inputs are padded and then reversed.
-            encoder_pad_size = encoder_size - len(encoder_input)
-            encoder_pad = [self.PAD_ID] * encoder_pad_size
-            encoder_inputs.append(encoder_input + encoder_pad)
-            mask = [1.0] * (len(encoder_input)) + [0.0] * (encoder_pad_size)
-            mask = np.reshape(mask, [encoder_size, 1])
-            encoder_mask.append(mask)
-            write_mask.append(mask)
-
-            # Decoder inputs get an extra "GO" symbol, and are padded then.
-            decoder_pad_size = decoder_size - len(decoder_input) - 1
-            decoder_inputs.append([self.GO_ID] + decoder_input +
-                                  [self.PAD_ID] * decoder_pad_size)
-
-            #print (decoder_inputs[-1])
-            #print (" ".join([self.ivocab[wid] for wid in decoder_inputs[-1]]))
-            gl_inputs.append(gl+[0]*(decoder_size-len(gl)))
-            #print (gl_inputs[-1])
-
-
-            len_input = range(len(decoder_input)+1, 0, -1) + [0]*(decoder_pad_size)
-            #print(len_input)
-            #tt = input(">")
-            len_inputs.append(len_input)
-
-        # Now we create batch-major vectors from the data selected above.
-        batch_encoder_inputs, batch_decoder_inputs, batch_weights = [], [], []
-        batch_gl_inputs = []
-        batch_write_mask = []
-
-        # Batch encoder inputs are just re-indexed encoder_inputs.
-        for length_idx in xrange(encoder_size):
-            batch_encoder_inputs.append(np.array([encoder_inputs[batch_idx][length_idx]
-                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
-            batch_gl_inputs.append(np.array([gl_inputs[batch_idx][length_idx]
-                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
-            batch_write_mask.append(np.array([write_mask[batch_idx][length_idx]
-                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
-
-        # Batch decoder inputs are re-indexed decoder_inputs, we create
-        # weights.
-        for length_idx in xrange(decoder_size):
-            batch_decoder_inputs.append(np.array([decoder_inputs[batch_idx][length_idx]
-                                                  for batch_idx in xrange(batch_size)], dtype=np.int32))
-
-            # Create target_weights to be 0 for targets that are padding.
-            batch_weight = np.ones(batch_size, dtype=np.float32)
-            for batch_idx in xrange(batch_size):
-                # We set weight to 0 if the corresponding target is a PAD symbol.
-                # The corresponding target is decoder_input shifted by 1
-                # forward.
-                if length_idx < decoder_size - 1:
-                    target = decoder_inputs[batch_idx][length_idx + 1]
-                if length_idx == decoder_size - 1 or target == self.PAD_ID:
-                    batch_weight[batch_idx] = 0.0
-
-            batch_weights.append(batch_weight)
-
-        #
-        encoder_mask = np.array(encoder_mask)
-        len_inputs = np.transpose(np.array(len_inputs))
-        gl_inputs = np.transpose(np.array(gl_inputs))
-        #print ("_____________")
-        return batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_mask, len_inputs, gl_inputs, batch_write_mask
-
-    def build_batches(self, data, batch_size):
-        batched_data = []
-        batch_num = int(np.ceil(len(data) / batch_size))  
-        for bi in range(0, batch_num):
-            instances = data[bi*batch_size : (bi+1)*batch_size]
-            if len(instances) < batch_size:
-                instances = instances + random.sample(data, batch_size - len(instances))
-
-            # generate all batch data
-            data_dic = {}
-            all_encoder_inputs = []
-            all_decoder_inputs = []
-            all_target_weights = []
-            all_encoder_mask = []
-            all_len_inputs = []
-            all_gl_inputs = []
-            all_write_mask = []
-
-            # build sentence batch
-            poems = [instance[1] for instance in instances] # all poems
-            glpatterns = [instance[2] for instance in instances]
-            for i in xrange(-1, self.sens_num-1):
-                if i <0:
-                    line0 = [[] for poem in poems]
-                else:
-                    line0 = [poem[i] for poem in poems]
-                
-                line1 = [poem[i+1] for poem in poems]
-                gls = [pattern[i+1] for pattern in glpatterns]
-
-                batch_encoder_inputs, batch_decoder_inputs, batch_weights, encoder_mask, len_inputs, gl_inputs, batch_write_mask = self.get_batch_sentence(
-                    line0, line1, gls, batch_size)
-
-                all_encoder_inputs.append(batch_encoder_inputs)
-                all_decoder_inputs.append(batch_decoder_inputs)
-                all_target_weights.append(batch_weights)
-                all_encoder_mask.append(encoder_mask)
-                all_len_inputs.append(len_inputs)
-                all_gl_inputs.append(gl_inputs)
-                all_write_mask.append(batch_write_mask)
-
-            #print (np.shape(all_gl_inputs))
-
-            data_dic['encoder_inputs'] = all_encoder_inputs
-            data_dic['decoder_inputs'] = all_decoder_inputs
-            data_dic['target_weights'] = all_target_weights
-            data_dic['encoder_mask'] = all_encoder_mask
-            data_dic['gl_inputs'] = all_gl_inputs
-            data_dic['len_inputs'] = all_len_inputs
-            data_dic['write_masks'] = all_write_mask
-
-            # build key batch
-            keysvec = [instance[0] for instance in instances]
-            key_inputs = [[] for x in xrange(self.hps.key_slots)]
-            key_mask = []
-            
-            for i in range(0, batch_size):
-                keys = keysvec[i] # batch_size * at most 4
-                mask = [1.0]*len(keys) + [0.0]*(self.hps.key_slots-len(keys))
-                mask = np.reshape(mask, [self.hps.key_slots, 1])
-                key_mask.append(mask)
-                for step in xrange(0, len(keys)):
-                    key = keys[step]
-                    key_inputs[step].append(key + [self.PAD_ID] * (2-len(key)))
-                for step in xrange(0, self.hps.key_slots-len(keys)):
-                    key_inputs[len(keys)+step].append([self.PAD_ID] * 2)
-
-            # key_inputs: key_slots, [id1, id2], batch_size
-            batch_key_inputs = [[] for x in xrange(self.hps.key_slots)]
-            for step in xrange(0, self.hps.key_slots):
-                batch_key_inputs[step].append(np.array([key_inputs[step][i][0] for i in xrange(batch_size)]))
-                batch_key_inputs[step].append(np.array([key_inputs[step][i][1] for i in xrange(batch_size)]))
-
-            key_mask = np.array(key_mask)
-
-            data_dic['key_mask'] = key_mask
-            data_dic['key_inputs'] = batch_key_inputs
-
-            batched_data.append(data_dic)
-
-        return batched_data, batch_num
-
     def create_model(self, session):
         """Create the model and initialize or load parameters in session."""
         model = PoemModel(self.hps)
@@ -221,20 +57,6 @@ class PoemTrainer(object):
             session.run(tf.global_variables_initializer())
 
         return model
-
-    '''
-    search a output sentence by the simple greedy_decode
-    '''
-
-    def greedy_decode(self, outputs):
-        outidx = [int(np.argmax(logit, axis=0)) for logit in outputs]
-        #print (outidx)
-        if self.EOS_ID in outidx:
-            outidx = outidx[:outidx.index(self.EOS_ID)]
-
-        sentence = self.idx2sentece(outidx)
-        sentence = " ".join(sentence)
-        return sentence
 
     def sample(self, encoder_inputs, decoder_inputs, key_inputs, outputs):
 
@@ -309,7 +131,6 @@ class PoemTrainer(object):
                 time1 = time.time()
                 for step in xrange(0, train_batch_num):
                     batch = train_batches[step]
-                    #outputs, _, step_loss, l2_loss, debug, debug2 = model.step(sess, batch, False)
                     outputs, step_loss, l2_loss, (wb1, wb2, wb3, wb4, wb5), grads = model.step(sess, batch, False)
                     total_loss += step_loss
 
