@@ -16,7 +16,7 @@ from nn import linear
 from functions import sequence_loss, flatten_query
 
 class PoemModel(object):
-    def __init__(self, hps, init_emb):
+    def __init__(self, hps, init_emb=None):
         # Create the model
         self.hps = hps
         self.enc_len = hps.bucket[0]
@@ -25,8 +25,12 @@ class PoemModel(object):
         self.keep_prob = tf.placeholder(tf.float32)
         self.global_step = tf.Variable(0, trainable=False)
 
-        self.zeros = np.zeros((self.batch_size, self.inter_mem_slots), dtype=np.float32)
+        self.zeros = np.zeros((self.hps.batch_size, self.hps.his_mem_slots), dtype=np.float32)
         self.gama = tf.constant(20.0)
+
+        self.learning_rate = tf.Variable(float(self.hps.learning_rate), trainable=False)
+        self.learning_rate_decay_op = \
+            self.learning_rate.assign(self.learning_rate * self.hps.decay_rate)
 
         self.b_size = self.hps.batch_size if self.mode == 'train' else 1
         
@@ -47,7 +51,7 @@ class PoemModel(object):
         self.random_bias = tf.constant(bias_val, dtype=tf.float32)
 
         # The null slot
-        null_mem = np.zeros([self.b_size, self.inter_mem_size], dtype=np.float32) - 1e-2
+        null_mem = np.zeros([self.b_size, self.hps.his_mem_size], dtype=np.float32) - 1e-2
         self.null_mem = np.expand_dims(null_mem, 1)
 
         # Build the graph
@@ -55,8 +59,8 @@ class PoemModel(object):
 
         # Build word embedding
         with tf.variable_scope('word_embedding'), tf.device('/cpu:0'):
-            if init_emb:
-                initializer = tf.constant_initializer(hps.init_emb)
+            if init_emb is not None:
+                initializer = tf.constant_initializer(init_emb)
             else:
                 initializer = tf.truncated_normal_initializer(stddev=1e-4)
             word_emb = tf.get_variable('word_emb', [self.hps.vocab_size, self.hps.emb_size],
@@ -80,7 +84,7 @@ class PoemModel(object):
 
         # Concatenate phonology embedding and length embedding to form the genre embedding
         self.emb_genre = [[] for x in xrange(self.hps.sens_num)]
-        for step in xrange(0, self.sens_num):
+        for step in xrange(0, self.hps.sens_num):
             for i in xrange(self.hps.bucket[1]+1):
                 self.emb_genre[step].append(array_ops.concat([emb_ph_inps[step][i], emb_len_inps[step][i]], 1) )
 
@@ -91,6 +95,11 @@ class PoemModel(object):
             output_keep_prob=self.keep_prob, input_keep_prob = self.keep_prob)
         self.enc_cell_bw = tf.nn.rnn_cell.DropoutWrapper(enc_cell_bw, 
             output_keep_prob=self.keep_prob, input_keep_prob = self.keep_prob)
+
+        if self.hps.mode == 'train':
+            self.build_train_graph()
+        else:
+            self.build_gen_graph()
 
         # saver
         self.saver = tf.train.Saver(tf.all_variables() , write_version=tf.train.SaverDef.V1)
@@ -117,11 +126,11 @@ class PoemModel(object):
 
             self.enc_mask[step] = tf.placeholder(tf.float32, shape=[None, enc_len, 1], name="enc_mask{0}".format(step))
 
-        self.key_inputs = [[] for x in xrange(self.hps.key_slots)]
+        self.key_inps = [[] for x in xrange(self.hps.key_slots)]
         for i in xrange(self.hps.key_slots):
             # NOTE: We set that each keyword must consist of no more than 2 characters
             for j in xrange(2):
-                self.key_inputs[i].append(tf.placeholder(tf.int32, shape=[None], name="key{0}_{1}".format(i,j)))
+                self.key_inps[i].append(tf.placeholder(tf.int32, shape=[None], name="key{0}_{1}".format(i,j)))
         self.key_mask = tf.placeholder(tf.float32, shape=[None, self.hps.key_slots, 1], name="key_mask")
 
         self.trg_weights = [[] for x in xrange(sens_num)]
@@ -129,9 +138,9 @@ class PoemModel(object):
             for i in xrange(dec_len + 1):
                 self.trg_weights[step].append(tf.placeholder(tf.float32, shape=[None], name="weight{0}_{1}".format(step, i)))
 
-        targets = [[] for x in xrange(sens_num)]
+        self.targets = [[] for x in xrange(sens_num)]
         for step in xrange(0, sens_num):
-            targets[step] = [self.dec_inps[step][i + 1] for i in xrange(len(self.dec_inps[step]) - 1)]
+            self.targets[step] = [self.dec_inps[step][i + 1] for i in xrange(len(self.dec_inps[step]) - 1)]
         
         # For beam search
         '''
@@ -195,7 +204,7 @@ class PoemModel(object):
             total_loss = gen_loss + 1e-5 * regular_loss
             opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
             gradients = tf.gradients(total_loss, params)
-            clipped_gradients, norm = tf.clip_by_global_norm(gradients, self.max_gradient_norm)
+            clipped_gradients, norm = tf.clip_by_global_norm(gradients, self.hps.max_gradient_norm)
                 
             self.update = opt.apply_gradients( zip(clipped_gradients, params), global_step=self.global_step)
             self.gradients = clipped_gradients
@@ -219,7 +228,7 @@ class PoemModel(object):
                 self.hps.his_mem_size], dtype=tf.float32)
             
             topic_trace = array_ops.zeros([self.hps.batch_size, 
-                self.hps.tpic_trace_size+self.hps.key_slots], dtype=tf.float32)
+                self.hps.topic_trace_size+self.hps.key_slots], dtype=tf.float32)
 
             his_mem_mask = tf.constant(self.zeros)
             
@@ -264,7 +273,7 @@ class PoemModel(object):
         total_mask = array_ops.concat( [his_mem_mask, key_mask_unpack, enc_mask_unpack], 1)
         total_attn_states = array_ops.concat( [his_mem, key_states, attn_states], 1)
 
-        dec_outs, dec_states, attn_weights = self.__build_decoder(self.emb_dec_inps[step], total_attn_states, 
+        dec_outs, dec_states, attn_weights = self.__build_decoder(self.emb_dec_inps[step][ : self.dec_len], total_attn_states, 
             total_mask, global_trace, initial_state, self.emb_genre[step], topic_trace)
 
         concat_aligns = array_ops.concat(attn_weights, 0)
@@ -274,7 +283,7 @@ class PoemModel(object):
 
         new_his_mem, wb1, wb2, wb3, wb4, wb5 = self.__write_memory(his_mem, enc_outs, global_trace, step)
         new_global_trace = self.__global_trace_update(global_trace, attn_states)
-        loss = sequence_loss(dec_outs, self.targets[step][: self.dec_len], self.weights[step][ : self.dec_len])
+        loss = sequence_loss(dec_outs, self.targets[step][: self.dec_len], self.trg_weights[step][ : self.dec_len])
         return dec_outs, loss, new_global_trace, new_his_mem, new_topic_trace, attn_weights, wb1, wb2, wb3, wb4, wb5
 
     def __build_key_memory(self):
@@ -304,7 +313,7 @@ class PoemModel(object):
 
         with variable_scope.variable_scope("EncoderRNN", reuse=True):
             (outputs , enc_state_fw, enc_state_bw)  = rnn.static_bidirectional_rnn(
-                    self.enc_cell_fw, self.enc_cell_bw, self.emb_enc_inps[step], dtype=tf.float32)
+                    self.enc_cell_fw, self.enc_cell_bw, self.emb_enc_inps[step][ : self.enc_len], dtype=tf.float32)
 
             enc_outs = outputs
 
@@ -534,10 +543,10 @@ class PoemModel(object):
                 input_feed[self.dec_inps[step][l].name] = data_dic['dec_inps'][step][l]
                 input_feed[self.trg_weights[step][l].name] = data_dic['trg_weights'][step][l]
                 input_feed[self.len_inps[step][l].name] = data_dic['len_inps'][step][l]
-                input_feed[self.hp_inps[step][l].name] = data_dic['hp_inps'][step][l]
+                input_feed[self.ph_inps[step][l].name] = data_dic['ph_inps'][step][l]
 
             last_target = self.dec_inps[step][self.dec_len].name
-            input_feed[last_target] = np.ones([self.hps.batch_size], dtype=np.int32) * self.PAD_ID
+            input_feed[last_target] = np.ones([self.hps.batch_size], dtype=np.int32) * self.hps.PAD_ID
             input_feed[self.enc_mask[step].name] =data_dic['enc_mask'][step]
 
         output_feed = []       

@@ -2,10 +2,10 @@ from collections import namedtuple
 
 
 HParams = namedtuple('HParams',
-                     'vocab_size, emb_size, ph_emb_size, len_emb_size'
+                     'vocab_size, emb_size, ph_emb_size, len_emb_size,'
                      'hidden_size, his_mem_size, his_mem_slots,' 
                      'global_trace_size, topic_trace_size, key_slots, sens_num, device, learning_rate,'
-                     'bucket, max_gradient_norm, buckets, PAD_ID, batch_size, mode,'
+                     'bucket, max_gradient_norm, PAD_ID, batch_size, mode,'
                      'epoches_per_checkpoint, epoches_per_validate, steps_per_train_log,'
                      'sample_num, max_epoch, burn_down, decay_rate'
                      )
@@ -30,5 +30,5 @@ hps = HParams(
             epoches_per_checkpoint=1, epoches_per_validate=1,
             steps_per_train_log=200, max_epoch=8,
             burn_down=4, decay_rate=0.9,
-            sample_num=1
+            sample_num=1 # Generate some poems when training for observation, with greedy search
         )
