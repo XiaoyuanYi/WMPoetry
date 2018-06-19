@@ -70,35 +70,22 @@ class PoetryTool(object):
             outidx = outidx[:outidx.index(self.__EOS_ID)]
 
         chars = self.idxes2chars(outidx)
-        sentence = " ".join(chars)
+        sentence = "".join(chars)
         return sentence
-
-    def softmax(self, x):
-        '''Compute softmax values for each sets of scores in x.'''
-        ''' Each line of x is a data line '''
-        ans = np.zeros(np.shape(x), dtype=np.float32)
-        for i in range(np.shape(x)[0]):
-            c = x[i, :]
-            ans[i, :] = np.exp(c) / np.sum(np.exp(c), axis=0)
-
-        return ans
 
     def norm_matrxi(self, matrix):
         ''' Normalize each line of matrix '''
         l = np.shape(matrix)[0]
         for i in range(0, l):
-            if np.sum(matrix[i, :]) == 0:
-                matrix[i, :] = 0
-            else:
-                matrix[i, :] = matrix[i, :] / np.sum(matrix[i, :])
+            matrix[i, :] = matrix[i, :] / (np.sum(matrix[i, :])+1e-12)
         return matrix
 
-    def load_dic(self, file_dir, if_return=False):
-        vocab_file = open(file_dir + '/vocab.pkl', 'rb')
+    def load_dic(self, vocab_path, ivocab_path):
+        vocab_file = open(vocab_path, 'rb')
         dic = cPickle.load(vocab_file)
         vocab_file.close()
 
-        ivocab_file = open(file_dir + '/ivocab.pkl', 'rb')
+        ivocab_file = open(ivocab_path, 'rb')
         idic = cPickle.load(ivocab_file)
         ivocab_file.close()
 
@@ -110,30 +97,24 @@ class PoetryTool(object):
         self.__GO_ID = dic['GO']
         self.__UNK_ID = dic['UNK']
 
-        if if_return:
-            return dic, idic
-
-
-    def load_data(self, file_dir, trainfile, validfile):
+    def load_data(self, train_path, valid_path):
         '''
-        loading  training data, including vocab, inverting vocab and corpus
+        Loading training and valiation data.
+        NOTE: Please run load_dic() at first.
         '''
-        if not self.__vocab:
-            self.load_dic(file_dir)    
-
-        corpus_file = open(file_dir + '/' + trainfile, 'rb')
+        corpus_file = open(train_path, 'rb')
         train_corpus = cPickle.load(corpus_file)
         corpus_file.close()
 
-        corpus_file = open(file_dir + '/' + validfile, 'rb')
+        corpus_file = open(valid_path, 'rb')
         valid_corpus = cPickle.load(corpus_file)
         corpus_file.close()
 
         return train_corpus, valid_corpus
 
-    def build_data(self, file_dir, batch_size, trainfile, validfile):
+    def build_data(self, batch_size, trainfile, validfile):
         train_data, valid_data = \
-            self.load_data(file_dir, trainfile, validfile)
+            self.load_data(trainfile, validfile)
 
         #TMP
         train_data = train_data[0:1000]
@@ -375,4 +356,3 @@ class PoetryTool(object):
             weights.append(weight)
 
         return fin_trg, weights
-

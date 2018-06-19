@@ -16,7 +16,6 @@ from tool import PoetryTool
 from config import hps
 
 class PoemTrainer(object):
-    """construction for PoemTrainer"""
 
     def __init__(self):
         # Construct hyper-parameter
@@ -24,12 +23,15 @@ class PoemTrainer(object):
         self.tool = PoetryTool(sens_num=hps.sens_num,
             key_slots=hps.key_slots, enc_len=hps.bucket[0],
             dec_len=hps.bucket[1])
-        # If not pre-trained word embedding, just
+        # If there isn't a pre-trained word embedding, just
         # set it to None, then the word embedding
-        # will be initialized with norm distribution
-        self.init_emb = np.load("data/train/init_emb.npy")
-        print ("init_emb_size: %s" % str(np.shape(self.init_emb)))
-        self.tool.load_dic("data/train")
+        # will be initialized with a norm distribution.
+        if hps.init_emb == '':
+            self.init_emb = None
+        else:
+            self.init_emb = np.load(self.hps.init_emb)
+            print ("init_emb_size: %s" % str(np.shape(self.init_emb)))
+        self.tool.load_dic(hps.vocab_path, hps.ivocab_path)
 
         vocab_size = self.tool.get_vocab_size()
         assert vocab_size > 0
@@ -41,12 +43,12 @@ class PoemTrainer(object):
         print("Params  sets: ")
         print (self.hps)
         print("___________________")
-        t = input(">")
+        raw_input("Please confirm the parameters and press enter to continue>")
 
 
     def create_model(self, session, model):
         """Create the model and initialize or load parameters in session."""
-        ckpt = tf.train.get_checkpoint_state("model")
+        ckpt = tf.train.get_checkpoint_state(self.hps.model_path)
         if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
             print("Reading model parameters from %s" %
                   ckpt.model_checkpoint_path)
@@ -75,11 +77,11 @@ class PoemTrainer(object):
                 keys.append("".join(self.tool.idxes2chars(key_idx)))
             key_str = " ".join(keys)
 
-            # build original sentences
+            # Build lines
             print ("%s" % (key_str))
             for step in xrange(0, self.hps.sens_num):
                 inputs = [c[idx] for c in enc_inps[step]]
-                inline = "".join(self.tool.idxes2chars(inputs))
+                sline = "".join(self.tool.idxes2chars(inputs))
 
                 target = [c[idx] for c in dec_inps[step]]
                 tline = "".join(self.tool.idxes2chars(target))
@@ -87,7 +89,7 @@ class PoemTrainer(object):
                 outline = [c[idx] for c in outputs[step]]
                 outline = self.tool.greedy_search(outline)
 
-                print(inline.ljust(34) + " # " + tline.ljust(34) + " # " + outline.ljust(34) + " # ")
+                print(sline.ljust(30) + " # " + tline.ljust(34) + " # " + outline.ljust(34) + " # ")
 
     def run_validation(self, sess, model, valid_batches, valid_batch_num, epoch):
         print("run validation...")
@@ -95,7 +97,7 @@ class PoemTrainer(object):
         total_l2_loss = 0.0
         for step in xrange(0, valid_batch_num):
             batch = valid_batches[step]
-            outputs, gen_loss, l2_loss   = model.step(sess, batch, True)
+            outputs, gen_loss, l2_loss = model.step(sess, batch, True)
             total_gen_loss += gen_loss
             total_l2_loss += l2_loss
         total_gen_loss /= valid_batch_num
@@ -117,9 +119,10 @@ class PoemTrainer(object):
             model = PoemModel(self.hps, self.init_emb)
             self.create_model(sess, model)
 
+            # Build batched data
             train_batch_num, valid_batch_num, \
-            train_batches, valid_batches = self.tool.build_data("data/train", 
-                self.hps.batch_size, "train.pkl", "valid.pkl")
+            train_batches, valid_batches = self.tool.build_data(
+                self.hps.batch_size, self.hps.train_data, self.hps.valid_data)
 
             print ("train_batch_num: %d" % (train_batch_num))
             print ("valid_batch_num: %d" % (valid_batch_num))
@@ -131,19 +134,15 @@ class PoemTrainer(object):
 
                 for step in xrange(0, train_batch_num):
                     batch = train_batches[step]
-                    outputs, gen_loss, l2_loss, (wb1, wb2, wb3, wb4, wb5), grads = model.step(sess, batch, False)
+                    outputs, gen_loss, l2_loss, (wb1, wb2), grads = model.step(sess, batch, False)
                     total_gen_loss += gen_loss
                     total_l2_loss += l2_loss
 
-                    #print (step_loss, l2_loss)
-
-                    if step % 2 == 0:
-                    #if step % self.hps.steps_per_train_log == 0:
-                        db4 = np.array(wb4)[0:6, 0, :, 0]
-                        db5 = np.array(wb5)[0:6, 0, :, 0]
-
-                        print (np.round(db4, 5))
-                        print (np.round(db5, 5))
+                    if step % self.hps.steps_per_train_log == 0:
+                        db1 = np.array(wb1)[0:6, 0, :, 0]
+                        db2 = np.array(wb2)[0:6, 0, :, 0]
+                        print (np.round(db1, 3))
+                        print (np.round(db2, 3))
                         
                         grad = []
                         for g in grads[3:]:
@@ -153,9 +152,10 @@ class PoemTrainer(object):
                         #print (grad)
 
                         time2 = time.time()
+                        time_cost = float(time2-time1) / self.hps.steps_per_train_log
                         time1 = time2
                         process_info = "epoch: %d, %d/%d %.3f%%, %f s per iter" % (epoch, step, train_batch_num,
-                            float(step+1) /train_batch_num * 100, float(time2-time1) /  self.hps.steps_per_train_log)
+                            float(step+1) /train_batch_num * 100, time_cost)
                         
 
                         self.sample(batch['enc_inps'], batch['dec_inps'], batch['key_inps'], outputs)
@@ -163,13 +163,13 @@ class PoemTrainer(object):
                         current_l2_loss = total_l2_loss / (step+1)
                         ppl = math.exp(current_gen_loss) if current_gen_loss < 300 else float('inf')
                         train_info = "train loss: %.3f  ppl:%.2f  l2 loss: %.3f" % (current_gen_loss, ppl, current_l2_loss)
-                        print (process_info+"\n")
-                        print(train_info+"\n")
+                        print (process_info)
+                        print(train_info)
                         print("______________________")
                         
-                        info = process_info + "\n" + train_info
+                        info = process_info + " " + train_info
                         fout = open("trainlog.txt", 'a')
-                        fout.write(info + "\n\n")
+                        fout.write(info + "\n")
                         fout.close()
 
 
@@ -183,13 +183,13 @@ class PoemTrainer(object):
                     lr1 = model.learning_rate.eval()
                     print ("%.4f to %.4f" % (lr0, lr1))
 
-                if epoch % self.hps.epoch_per_valid_log == 0:
+                if epoch % self.hps.epoches_per_validate == 0:
                     self.run_validation(sess, model, valid_batches, valid_batch_num, epoch)
 
-                if epoch % self.hps.epoch_per_checkpoint == 0:
+                if epoch % self.hps.epoches_per_checkpoint == 0:
                     # Save checkpoint and zero timer and loss.
                     print ("saving model...")
-                    checkpoint_path = os.path.join("model", "poem.ckpt" + "_" + str(current_epoch))
+                    checkpoint_path = os.path.join(self.hps.model_path, "poem.ckpt" + "_" + str(current_epoch))
                     model.saver.save(sess, checkpoint_path, global_step=model.global_step)
                 
                 print("shuffle data...")

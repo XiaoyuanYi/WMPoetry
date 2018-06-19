@@ -102,7 +102,7 @@ class PoemModel(object):
             self.build_gen_graph()
 
         # saver
-        self.saver = tf.train.Saver(tf.all_variables() , write_version=tf.train.SaverDef.V1)
+        self.saver = tf.train.Saver(tf.global_variables() , write_version=tf.train.SaverDef.V1)
 
     def __build_placeholders(self):
         sens_num = self.hps.sens_num
@@ -179,7 +179,7 @@ class PoemModel(object):
                     
             self.new_topic_trace = self.__topic_trace_update(self.beam_topic_trace, self.beam_key_align, self.beam_key_states)
             self.next_history = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
-            self.new_his_mem, self.write_align, self.w_mask_vec =  self.__write_memory(self.beam_his_mem, 
+            self.new_his_mem, self.write_align =  self.__write_memory(self.beam_his_mem, 
             self.beam_enc_states, self.beam_global_trace, 0)
 
 
@@ -187,7 +187,7 @@ class PoemModel(object):
         print ("using device: %s" % self.hps.device)
         with tf.device(self.hps.device):
 
-            outs_vec, loss_vec, debug1_vec, write_debug_vec = self.__build_graph()
+            normed_outs_vec, loss_vec, write_debug_vec = self.__build_graph()
 
             params = tf.trainable_variables()
                 
@@ -196,7 +196,6 @@ class PoemModel(object):
             for param in params:
                 name = param.name
                 print (name)
-                #if name.find("write_memory") != -1:
                 regularizers.append(tf.nn.l2_loss(param))
                 
             regular_loss = math_ops.reduce_sum(regularizers)
@@ -210,12 +209,9 @@ class PoemModel(object):
             self.gradients = clipped_gradients
             
             # fetch
-            self.loss = total_loss
             self.gen_loss = gen_loss
             self.l2_loss = regular_loss
-            self.outputs = outs_vec
-            self.all_losses = loss_vec
-            self.debugs1 = debug1_vec
+            self.outputs = normed_outs_vec
             self.wdvec = write_debug_vec
 
     def __build_graph(self):
@@ -232,17 +228,16 @@ class PoemModel(object):
 
             his_mem_mask = tf.constant(self.zeros)
             
-            outs_vec = []
+            normed_outs_vec = []
             loss_vec = []
-            debug1_vec = []
-            write_debug_vec = [[], [], [], [], []]
+            write_debug_vec = [[], []]
             
             for step in xrange(0, self.hps.sens_num):
                 if step > 0:
                         key_initial_state = None
                         variable_scope.get_variable_scope().reuse_variables()
-                outs, loss, global_trace, his_mem, topic_trace, attn_weights,\
-                 wb1, wb2, wb3, wb4, wb5 = self.__build_seq2seq(global_trace, key_initial_state, 
+                normed_outs, loss, global_trace, his_mem, topic_trace, \
+                attn_weights, wb1, wb2 = self.__build_seq2seq(global_trace, key_initial_state, 
                     key_states, his_mem, his_mem_mask, topic_trace, step)
 
                 if step >=1:
@@ -250,15 +245,11 @@ class PoemModel(object):
                     his_mem_bool = tf.not_equal(his_mem_sum, 0)
                     his_mem_mask = tf.to_float(his_mem_bool)
 
-                outs_vec.append(outs)
+                normed_outs_vec.append(normed_outs)
                 loss_vec.append(loss)
-                debug1_vec.append(attn_weights)
                 write_debug_vec[0].append(wb1)
                 write_debug_vec[1].append(wb2)
-                write_debug_vec[2].append(wb3)
-                write_debug_vec[3].append(wb4)
-                write_debug_vec[4].append(wb5)
-            return outs_vec, loss_vec, debug1_vec, write_debug_vec
+            return normed_outs_vec, loss_vec, write_debug_vec
 
     def __build_seq2seq(self, global_trace, key_initial_state, key_states, 
         his_mem, his_mem_mask, topic_trace, step):
@@ -273,18 +264,20 @@ class PoemModel(object):
         total_mask = array_ops.concat( [his_mem_mask, key_mask_unpack, enc_mask_unpack], 1)
         total_attn_states = array_ops.concat( [his_mem, key_states, attn_states], 1)
 
-        dec_outs, dec_states, attn_weights = self.__build_decoder(self.emb_dec_inps[step][ : self.dec_len], total_attn_states, 
-            total_mask, global_trace, initial_state, self.emb_genre[step], topic_trace)
+        normed_dec_outs, dec_outs, dec_states, attn_weights = self.__build_decoder(
+            self.emb_dec_inps[step][ : self.dec_len], total_attn_states, total_mask,
+            global_trace, initial_state, self.emb_genre[step], topic_trace)
 
         concat_aligns = array_ops.concat(attn_weights, 0)
         key_align = concat_aligns[:, :, self.hps.his_mem_slots:self.hps.his_mem_slots+self.hps.key_slots]
         key_align = math_ops.reduce_mean(key_align, axis=0)
         new_topic_trace = self.__topic_trace_update(topic_trace, key_align, key_states)
 
-        new_his_mem, wb1, wb2, wb3, wb4, wb5 = self.__write_memory(his_mem, enc_outs, global_trace, step)
+        new_his_mem, wb1, wb2 = self.__write_memory(his_mem, enc_outs, global_trace, step)
         new_global_trace = self.__global_trace_update(global_trace, attn_states)
         loss = sequence_loss(dec_outs, self.targets[step][: self.dec_len], self.trg_weights[step][ : self.dec_len])
-        return dec_outs, loss, new_global_trace, new_his_mem, new_topic_trace, attn_weights, wb1, wb2, wb3, wb4, wb5
+        return normed_dec_outs, loss, new_global_trace, new_his_mem,\
+            new_topic_trace, attn_weights, wb1, wb2
 
     def __build_key_memory(self):
         #print ("memory")
@@ -343,6 +336,7 @@ class PoemModel(object):
                 raise ValueError("Shape[1] and [2] of attn_states must be known: %s" % total_attn_states.get_shape())
 
             dec_outs, dec_states, attn_weights  = [], [], []
+            normed_dec_outs = []
 
             # build attn_mask
             imask = 1.0 - total_mask
@@ -372,10 +366,11 @@ class PoemModel(object):
                     output = linear(cell_out, output_size, True)
 
                 dec_outs.append(tf.identity(output))
+                normed_dec_outs.append(tf.identity(tf.nn.softmax(output)))
                 attn_weights.append([align])
                 dec_states.append(tf.identity(state))
 
-            return  dec_outs, dec_states, attn_weights
+            return  normed_dec_outs, dec_outs, dec_states, attn_weights
     
     '''
     query is a list
@@ -413,7 +408,7 @@ class PoemModel(object):
             mem_slots = his_mem.get_shape()[1].value
             mem_size = his_mem.get_shape()[2].value
             
-            wb1, wb2, wb3, wb4, wb5 = [], [], [], [], []
+            wb1, wb2= [], []
 
             for i, state in enumerate(enc_states):
                 if i > 0:
@@ -473,18 +468,11 @@ class PoemModel(object):
                 final_mask = float_mask[:, 0:self.hps.his_mem_slots, :]
                 #print (final_mask.get_shape())
                 his_mem = (1.0 - final_mask) * his_mem + final_mask * w_states
-                #attn_weights_write.append(s)
-                #w_mask_vec.append(bias1)
 
-                wb1.append(s)
-                wb2.append(bias1)
-                wb3.append(s1)
-                wb4.append(a)
-                wb5.append(float_mask)
+                wb1.append(a)
+                wb2.append(float_mask)
 
-
-            return his_mem, wb1, wb2, wb3, wb4, wb5
-            #return inter_mem, wb4, wb5
+            return his_mem, wb1, wb2
 
     def __topic_trace_update(self, topic_trace, key_align, key_states):
         with variable_scope.variable_scope("topic_trace_update"):
@@ -555,8 +543,7 @@ class PoemModel(object):
                 output_feed.append(self.outputs[step][l])
 
         if not forward_only:
-            output_feed += [self.update, self.gen_loss, self.l2_loss, self.wdvec[0][1], self.wdvec[1][1],
-             self.wdvec[2][1], self.wdvec[4][2], self.wdvec[4][1], self.gradients] 
+            output_feed += [self.update, self.gen_loss, self.l2_loss, self.wdvec[1][1], self.wdvec[1][2], self.gradients] 
         else:
             output_feed += [self.gen_loss, self.l2_loss]  # Loss for this batch.
 
@@ -568,7 +555,7 @@ class PoemModel(object):
 
         n = self.dec_len * self.hps.sens_num
         if not forward_only:
-            return logits, outputs[n+1], outputs[n+2], (outputs[n+3], outputs[n+4], outputs[n+5], outputs[n+6], outputs[n+7]), outputs[n+8]
+            return logits, outputs[n+1], outputs[n+2], (outputs[n+3], outputs[n+4]), outputs[n+5]
         else:
             return logits, outputs[n], outputs[n+1]
 
