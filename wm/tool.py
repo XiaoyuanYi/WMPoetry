@@ -204,7 +204,7 @@ class PoetryTool(object):
         return batched_data, batch_num
 
     def get_batch_sentence(self, inputs, outputs, phs, batch_size):
-        assert len(inputs) == len(outputs) == batch_size
+        assert len(inputs) == len(outputs) == len(phs) == batch_size
         enc_inps, dec_inps = [], []
         ph_inps, len_inps = [], []
         enc_mask, write_mask = [], []

@@ -60,8 +60,10 @@ class PoemModel(object):
         # Build word embedding
         with tf.variable_scope('word_embedding'), tf.device('/cpu:0'):
             if init_emb is not None:
+                print ("Initialize embedding with pre-trained word2vec.")
                 initializer = tf.constant_initializer(init_emb)
             else:
+                print ("Initialize embedding with normal distribution.")
                 initializer = tf.truncated_normal_initializer(stddev=1e-4)
             word_emb = tf.get_variable('word_emb', [self.hps.vocab_size, self.hps.emb_size],
                 dtype=tf.float32, initializer=initializer, trainable= True)
@@ -73,21 +75,23 @@ class PoemModel(object):
 
         # Build genre embedding
         with tf.variable_scope('ph_embedding'), tf.device('/cpu:0'):
+            # NOTE: we set fixed 36 phonology categories
             ph_emb = tf.get_variable('ph_emb', [36, self.hps.ph_emb_size], dtype=tf.float32,
                 initializer=tf.truncated_normal_initializer(stddev=1e-4))
         emb_ph_inps = [ [tf.nn.embedding_lookup(ph_emb, x) for x in ph_inp] for ph_inp in self.ph_inps]
 
         with tf.variable_scope('len_embedding'), tf.device('/cpu:0'):
-            len_emb = tf.get_variable('len_emb', [self.hps.bucket[1]+1, self.hps.len_emb_size], dtype=tf.float32,
+            len_emb = tf.get_variable('len_emb', [self.dec_len+1, self.hps.len_emb_size], dtype=tf.float32,
                 initializer=tf.truncated_normal_initializer(stddev=1e-4))
         emb_len_inps = [ [tf.nn.embedding_lookup(len_emb, x) for x in len_inp] for len_inp in self.len_inps]
 
         # Concatenate phonology embedding and length embedding to form the genre embedding
         self.emb_genre = [[] for x in xrange(self.hps.sens_num)]
         for step in xrange(0, self.hps.sens_num):
-            for i in xrange(self.hps.bucket[1]+1):
+            for i in xrange(self.dec_len+1):
                 self.emb_genre[step].append(array_ops.concat([emb_ph_inps[step][i], emb_len_inps[step][i]], 1) )
 
+        # Cells for the encoder
         enc_cell_fw  = tf.nn.rnn_cell.GRUCell(self.hps.hidden_size)
         enc_cell_bw = tf.nn.rnn_cell.GRUCell(self.hps.hidden_size)
 
@@ -112,30 +116,28 @@ class PoemModel(object):
         self.ph_inps = [[] for x in xrange(sens_num)]
         self.len_inps = [[] for x in xrange(sens_num)]
         self.write_masks = [[] for x in xrange(sens_num)]
-        enc_len = self.hps.bucket[0]
-        dec_len = self.hps.bucket[1]
 
         for step in xrange(0, sens_num):
-            for i in xrange(enc_len):
+            for i in xrange(self.enc_len):
                 self.enc_inps[step].append(tf.placeholder(tf.int32, shape=[None], name="enc{0}_{1}".format(step, i)))
                 self.write_masks[step].append(tf.placeholder(tf.float32, shape=[None, 1], name="write_masks{0}_{1}".format(step, i)))
-            for i in xrange(dec_len + 1):
+            for i in xrange(self.dec_len + 1):
                 self.dec_inps[step].append(tf.placeholder(tf.int32, shape=[None],name="dec{0}_{1}".format(step, i)))
                 self.len_inps[step].append(tf.placeholder(tf.int32, shape=[None],name="len_inps{0}_{1}".format(step, i)))
                 self.ph_inps[step].append(tf.placeholder(tf.int32, shape=[None],name="ph_inps{0}_{1}".format(step, i)))
 
-            self.enc_mask[step] = tf.placeholder(tf.float32, shape=[None, enc_len, 1], name="enc_mask{0}".format(step))
+            self.enc_mask[step] = tf.placeholder(tf.float32, shape=[None, self.enc_len, 1], name="enc_mask{0}".format(step))
 
         self.key_inps = [[] for x in xrange(self.hps.key_slots)]
         for i in xrange(self.hps.key_slots):
             # NOTE: We set that each keyword must consist of no more than 2 characters
             for j in xrange(2):
-                self.key_inps[i].append(tf.placeholder(tf.int32, shape=[None], name="key{0}_{1}".format(i,j)))
+                self.key_inps[i].append(tf.placeholder(tf.int32, shape=[None], name="key{0}_{1}".format(i, j)))
         self.key_mask = tf.placeholder(tf.float32, shape=[None, self.hps.key_slots, 1], name="key_mask")
 
         self.trg_weights = [[] for x in xrange(sens_num)]
         for step in xrange(0, sens_num):
-            for i in xrange(dec_len + 1):
+            for i in xrange(self.dec_len + 1):
                 self.trg_weights[step].append(tf.placeholder(tf.float32, shape=[None], name="weight{0}_{1}".format(step, i)))
 
         self.targets = [[] for x in xrange(sens_num)]
@@ -143,25 +145,32 @@ class PoemModel(object):
             self.targets[step] = [self.dec_inps[step][i + 1] for i in xrange(len(self.dec_inps[step]) - 1)]
         
         # For beam search
-        '''
-        self.beam_key_align = tf.placeholder(tf.float32, shape=[None, self.key_slots], name="beam_key_align")
-        self.beam_attn_states = tf.placeholder(tf.float32, shape=[None, self.buckets[0][0], self.hidden_size*2], name="beam_attn_states")
-        self.beam_initial_state = tf.placeholder(tf.float32, shape=[None, self.hidden_size] , name="beam_initial_state")
-        self.beam_key_states = tf.placeholder(tf.float32, shape=[None, 4, self.hidden_size*2], name="beam_key_states")
-        self.beam_history = tf.placeholder(tf.float32, shape=[None, self.global_history_size], name="beam_history")
+        self.beam_key_align = tf.placeholder(tf.float32, 
+            shape=[None, self.hps.key_slots], name="beam_key_align")
+        self.beam_attn_states = tf.placeholder(tf.float32, 
+            shape=[None, self.enc_len, self.hps.hidden_size*2], name="beam_attn_states")
+        self.beam_initial_state = tf.placeholder(tf.float32, 
+            shape=[None, self.hps.hidden_size] , name="beam_initial_state")
+        self.beam_key_states = tf.placeholder(tf.float32, 
+            shape=[None, self.hps.key_slots, self.hps.hidden_size*2], name="beam_key_states")
+        self.beam_global_trace = tf.placeholder(tf.float32, 
+            shape=[None, self.hps.global_trace], name="beam_global_trace")
         
-        # the states need to be combined with last history
-        self.beam_inter_mem = tf.placeholder(tf.float32, [None, self.inter_mem_slots, self.inter_mem_size], name="beam_inter_mem")
-        self.beam_inter_mem_mask = tf.placeholder(tf.float32, [None, self.inter_mem_slots], name="beam_inter_mem_mask")
-        self.beam_trace_states = tf.placeholder(tf.float32, [None, self.trace_size + self.key_slots], name="beam_trace_states")
+        self.beam_his_mem = tf.placeholder(tf.float32, 
+            [None, self.hps.his_mem_slots, self.hps.his_mem_size], name="beam_his_mem")
+        self.beam_his_mem_mask = tf.placeholder(tf.float32, 
+            [None, self.hps.his_mem_slots], name="beam_his_mem_mask")
+        self.beam_topic_trace = tf.placeholder(tf.float32, 
+            [None, self.hps.trace_size + self.hps.key_slots], name="beam_topic_trace")
 
+        # For history memory write
         self.beam_mem_states = []
         self.beam_mem_wmask = []
-
-        for i in xrange(self.buckets[-1][0]):  # Last bucket is the biggest one.
-            self.beam_mem_states.append(tf.placeholder(tf.float32, shape=[None, self.hidden_size*2],name="beam_mem_states{0}".format(i)))
-            self.beam_mem_wmask .append(tf.placeholder(tf.float32, shape=[None, 1], name="beam_mem_wmasks{0}".format(i)))
-        '''
+        for i in xrange(self.dec_len):
+            self.beam_mem_states.append(tf.placeholder(tf.float32, 
+                shape=[None, self.hidden_size*2],name="beam_mem_states{0}".format(i)))
+            self.beam_mem_wmask.append(tf.placeholder(tf.float32, 
+                shape=[None, 1], name="beam_mem_wmasks{0}".format(i)))
 
     def build_gen_graph(self):
         print ("using device: %s" % self.hps.device)
@@ -172,16 +181,15 @@ class PoemModel(object):
             enc_mask_unpack =  tf.unstack(self.enc_mask[0], axis = 2)[0]
             key_mask_unpack =  tf.unstack(self.key_mask, axis = 2)[0]
             total_mask = array_ops.concat([self.beam_his_mem_mask, key_mask_unpack, enc_mask_unpack], 1)
-            total_attn_states = array_ops.concat([self.beam_inter_mem, self.beam_key_states, self.beam_attn_states], 1)
+            total_attn_states = array_ops.concat([self.beam_his_mem, self.beam_key_states, self.beam_attn_states], 1)
             
-            self.next_out, self.next_state, self.next_align = self.__build_decoder([self.emb_dec_inps[0][0]],
+            self.next_out, _, self.next_state, self.next_align = self.__build_decoder([self.emb_dec_inps[0][0]],
                 total_attn_states, total_mask, self.beam_global_trace, self.beam_initial_state, [self.emb_genre[0][0]], self.beam_topic_trace)
                     
             self.new_topic_trace = self.__topic_trace_update(self.beam_topic_trace, self.beam_key_align, self.beam_key_states)
-            self.next_history = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
+            self.next_global_trace = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
             self.new_his_mem, self.write_align =  self.__write_memory(self.beam_his_mem, 
             self.beam_enc_states, self.beam_global_trace, 0)
-
 
     def build_train_graph(self):
         print ("using device: %s" % self.hps.device)
@@ -228,8 +236,7 @@ class PoemModel(object):
 
             his_mem_mask = tf.constant(self.zeros)
             
-            normed_outs_vec = []
-            loss_vec = []
+            normed_outs_vec, loss_vec = [], []
             write_debug_vec = [[], []]
             
             for step in xrange(0, self.hps.sens_num):
@@ -246,7 +253,7 @@ class PoemModel(object):
                     his_mem_mask = tf.to_float(his_mem_bool)
 
                 normed_outs_vec.append(normed_outs)
-                loss_vec.append(loss)
+                loss_vec.append(tf.identity(loss))
                 write_debug_vec[0].append(wb1)
                 write_debug_vec[1].append(wb2)
             return normed_outs_vec, loss_vec, write_debug_vec
@@ -302,11 +309,11 @@ class PoemModel(object):
 
         return final_state, key_states
             
-    def __build_encoder(self, step):
+    def __build_encoder(self, step, length):
 
         with variable_scope.variable_scope("EncoderRNN", reuse=True):
             (outputs , enc_state_fw, enc_state_bw)  = rnn.static_bidirectional_rnn(
-                    self.enc_cell_fw, self.enc_cell_bw, self.emb_enc_inps[step][ : self.enc_len], dtype=tf.float32)
+                    self.enc_cell_fw, self.enc_cell_bw, self.emb_enc_inps[step][:self.enc_len], dtype=tf.float32)
 
             enc_outs = outputs
 
@@ -324,7 +331,6 @@ class PoemModel(object):
 
     def __build_decoder(self, dec_inps, total_attn_states, total_mask, global_trace,
         initial_state, genre, topic_trace):
-        #attentions: encoder states  
         with variable_scope.variable_scope("seq2seq_Decoder"):
 
             dec_cell = tf.nn.rnn_cell.GRUCell(self.hps.hidden_size)       
@@ -372,10 +378,7 @@ class PoemModel(object):
 
             return  normed_dec_outs, dec_outs, dec_states, attn_weights
     
-    '''
-    query is a list
-    for local attention, [state]; for key attention, [state, history]
-    '''
+
     def __attention_calcu(self, attentions, query, attn_mask, scope):
         with variable_scope.variable_scope(scope):
             attn_length = attentions.get_shape()[1].value  # the length of a input sentence
@@ -401,8 +404,7 @@ class PoemModel(object):
             d = array_ops.reshape(d, [-1, attn_size])  #remember this size
             return d, a
 
-
-    # Write to history memory
+    # Write history memory
     def __write_memory(self, his_mem, enc_states, global_trace, step):
         with variable_scope.variable_scope("write_memory"):
             mem_slots = his_mem.get_shape()[1].value
@@ -428,8 +430,8 @@ class PoemModel(object):
                 s = math_ops.reduce_sum(v * math_ops.tanh(mem_features + y), [2, 3]) 
                 random_mask = 1.0 - tf.sign(math_ops.reduce_sum(tf.abs(tmp_mem), axis=2))
 
-                # random_mask is shows if a slot is empty, 1 empty, 0 not empty
-                # null mask is 1 if there is at least 1 empty slot
+                # The random_mask shows if a slot is empty, 1 empty, 0 not empty.
+                # The null mask is 1 if there is at least 1 empty slot.
                 null_mask = random_mask[:, 0:self.hps.his_mem_slots]
                 null_mask = math_ops.reduce_sum(null_mask, axis=1)
                 null_mask = tf.sign(null_mask)
@@ -561,50 +563,50 @@ class PoemModel(object):
 
     # Some apis for beam search
     #----------------------------------------
-    def key_memory_computer(self, session, key_inputs, key_mask):
+    def key_memory_computer(self, session, key_inps, key_mask):
         input_feed = {}
         input_feed[self.keep_prob] = 1.0
-        for step in xrange(self.key_slots):
+        for step in xrange(self.hps.key_slots):
             for j in xrange(2):
-                input_feed[self.key_inputs[step][j].name] = key_inputs[step][j]
+                input_feed[self.key_inps[step][j].name] = key_inps[step][j]
         input_feed[self.key_mask.name] = key_mask
 
         output_feed = [self.key_initial_state, self.key_states]
         outputs = session.run(output_feed, input_feed)
         return outputs[0], outputs[1]  # key_initial_state, key_states
 
-    def encoder_computer(self, session, encoder_inputs, encoder_mask):
-        encoder_size = len(encoder_inputs) 
+    def encoder_computer(self, session, enc_inps, enc_mask):
+        assert self.enc_len == len(enc_inps) 
         input_feed = {}
         input_feed[self.keep_prob] = 1.0
-        for l in xrange(encoder_size):
-            input_feed[self.encoder_inputs[0][l].name] = encoder_inputs[l]
+        for l in xrange(self.enc_len):
+            input_feed[self.enc_inps[0][l].name] = enc_inps[l]
 
-        input_feed[self.encoder_mask[0].name] = encoder_mask
-        output_feed = [self.encoder_state, self.attention_states]
+        input_feed[self.enc_mask[0].name] = enc_mask
+        output_feed = [self.encoder_state, self.attn_states]
         outputs = session.run(output_feed, input_feed)
         return outputs[0], outputs[1]  # encoder_state, attention_states
         
 
-    def decoder_state_computer(self, sess, decoder_inputs, len_inputs, gl_input,  prev_state, attention_states, key_states, inter_mem, history, 
-        encoder_mask, key_mask, inter_mem_mask, trace_states):
+    def decoder_state_computer(self, sess, dec_inp, len_inp, ph_inp, prev_state,
+        attn_states, key_states, his_mem, global_trace, enc_mask, key_mask, his_mem_mask, topic_trace):
         input_feed = {}
         input_feed[self.keep_prob] = 1.0
 
-        input_feed[self.decoder_inputs[0][0].name] = decoder_inputs
-        input_feed[self.len_inputs[0][0].name] = len_inputs
-        input_feed[self.gl_inputs[0][0].name] = gl_input
+        input_feed[self.dec_inps[0][0].name] = dec_inp
+        input_feed[self.len_inps[0][0].name] = len_inp
+        input_feed[self.ph_inps[0][0].name] = ph_inp
 
-        input_feed[self.beam_attn_states.name] = attention_states
-        input_feed[self.encoder_mask[0].name] = encoder_mask
+        input_feed[self.beam_attn_states.name] = attn_states
+        input_feed[self.enc_mask[0].name] = enc_mask
         input_feed[self.beam_initial_state.name] = prev_state
         input_feed[self.beam_key_states.name] = key_states
         input_feed[self.key_mask.name] = key_mask
-        input_feed[self.beam_history.name] = history
-        input_feed[self.beam_trace_states.name] = trace_states
+        input_feed[self.beam_global_trace.name] = global_trace
+        input_feed[self.beam_topic_trace.name] = topic_trace
 
-        input_feed[self.beam_inter_mem.name] = inter_mem
-        input_feed[self.beam_inter_mem_mask.name] = inter_mem_mask
+        input_feed[self.beam_his_mem.name] = his_mem
+        input_feed[self.beam_his_mem_mask.name] = his_mem_mask
 
         output_feed = [self.next_output[0], self.next_state[0], self.next_align[0][0]]
 
@@ -612,38 +614,39 @@ class PoemModel(object):
 
         return outputs[0], outputs[1], outputs[2]# next_output, next_state, next_align
 
-    def trace_computer(self, session, key_states, prev_trace_state, key_align):
+    def topic_trace_computer(self, session, key_states, prev_topic_trace, key_align):
         input_feed = {}
+        input_feed[self.keep_prob] = 1.0
         input_feed[self.beam_key_states.name] = key_states
-        input_feed[self.beam_trace_states.name] = prev_trace_state
+        input_feed[self.beam_topic_trace.name] = prev_topic_trace
         input_feed[self.beam_key_align.name] = key_align
-        output_feed = [self.next_trace_states]
+        output_feed = [self.next_topic_trace]
 
         outputs = session.run(output_feed, input_feed)
         return outputs[0]
 
-    def history_computer(self, session, prev_history, prev_attn_states):
-        # Input feed: encoder inputs, decoder inputs, target_weights, as provided.
+    def global_trace_computer(self, session, prev_global_trace, prev_attn_states):
         input_feed = {}
-        input_feed [self.beam_history] = prev_history
+        input_feed[self.keep_prob] = 1.0
+        input_feed [self.beam_global_trace] = prev_global_trace
         input_feed[self.beam_attn_states] = prev_attn_states
-        output_feed = [self.next_history]  # Loss for this batch.
+        output_feed = [self.next_global_trace]
 
         outputs = session.run(output_feed, input_feed)
 
         return outputs[0]
 
-    def inter_mem_computer(self, session, inter_mem, prev_encoder_states, mem_write_mask, history):
+    def his_mem_computer(self, session, his_mem, prev_enc_states, mem_write_mask, global_trace):
         input_feed = {}
-        input_feed[self.beam_inter_mem.name] = inter_mem
+        input_feed[self.keep_prob] = 1.0
+        input_feed[self.beam_his_mem.name] = his_mem
 
-        encoder_size = self.buckets[0][0]
-        for l in xrange(encoder_size):
-            input_feed[self.beam_mem_states[l]] = prev_encoder_states[l]
+        for l in xrange(self.enc_len):
+            input_feed[self.beam_mem_states[l]] = prev_enc_states[l]
             input_feed[self.beam_mem_wmask[l]] = mem_write_mask[l]
-        input_feed [self.beam_history.name] = history
+        input_feed [self.beam_global_trace.name] = global_trace
 
-        output_feed = [self.next_inter_mem, self.next_write_align, self.w_mask_vec] 
+        output_feed = [self.next_inter_mem, self.next_write_align] 
         outputs = session.run(output_feed, input_feed)
 
-        return outputs[0], outputs[1], outputs[2]
+        return outputs[0], outputs[1]
