@@ -26,7 +26,7 @@ class PoetryTool(object):
         ''' Characters to idx list '''
         idxes = []
         for c in chars:
-            if c in self.vocab:
+            if c in self.__vocab:
                 idxes.append(self.__vocab[c])
             else:
                 idxes.append(self.__vocab['UNK'])
@@ -269,18 +269,14 @@ class PoetryTool(object):
 
     # -----------------------------------------------------------
     # Tools for beam search
-    def beam_get_sentence(self, idxes, ivocab, ws=False):
-        '''
-        change id to a sentence
-        ws: if use white space to split chracters
-        '''
+    def beam_get_sentence(self, idxes):
         if idxes is not list:
             idxes = list(idxes)
         if self.__EOS_ID in idxes:
           idxes = idxes[:idxes.index(self.__EOS_ID)]
 
-        chars = self.idxes2chars(idxes, ivocab)
-        sentence = " ".join(chars) if ws else "".join(chars)
+        chars = self.idxes2chars(idxes)
+        sentence = "".join(chars)
 
         return sentence
 
@@ -339,20 +335,4 @@ class PoetryTool(object):
             batch_key_inps[step].append(np.array([key_inps[step][i][1] for i in xrange(batch_size)]))
         key_mask = np.array(key_mask)
 
-        return batch_key_inps, key_mask 
-
-    def get_batch_trg(self, trg):
-        dec_inp = trg + [self.__EOS_ID]
-        dec_pad_size = self.__dec_len - len(dec_inp) -1
-        fin_trg = [self.__GO_ID] + dec_inp + [self.__PAD_ID] * dec_pad_size
-
-        weights = []
-        for length_idx in xrange(self.__dec_len):
-            weight = 1.0
-            if length_idx < self.__dec_len - 1:
-                target = fin_trg[length_idx + 1]
-            if  length_idx == self.__dec_len-1 or target == self.__PAD_ID:
-                weight = 0.0
-            weights.append(weight)
-
-        return fin_trg, weights
+        return batch_key_inps, key_mask

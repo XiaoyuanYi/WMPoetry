@@ -1,0 +1,3 @@
+model_checkpoint_path: "poem.ckpt_8-34928"
+all_model_checkpoint_paths: "poem.ckpt_8-34928"
+all_model_checkpoint_paths: "poem.ckpt_2-126"

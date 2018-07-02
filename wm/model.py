@@ -183,12 +183,13 @@ class PoemModel(object):
             total_mask = array_ops.concat([self.beam_his_mem_mask, key_mask_unpack, enc_mask_unpack], 1)
             total_attn_states = array_ops.concat([self.beam_his_mem, self.beam_key_states, self.beam_attn_states], 1)
             
+            # normed_dec_outs, dec_outs, dec_states, attn_weights
             self.next_out, _, self.next_state, self.next_align = self.__build_decoder([self.emb_dec_inps[0][0]],
                 total_attn_states, total_mask, self.beam_global_trace, self.beam_initial_state, [self.emb_genre[0][0]], self.beam_topic_trace)
                     
             self.new_topic_trace = self.__topic_trace_update(self.beam_topic_trace, self.beam_key_align, self.beam_key_states)
             self.next_global_trace = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
-            self.new_his_mem, self.write_align =  self.__write_memory(self.beam_his_mem, 
+            self.new_his_mem, _ =  self.__write_memory(self.beam_his_mem, 
             self.beam_enc_states, self.beam_global_trace, 0)
 
     def build_train_graph(self):
@@ -561,8 +562,8 @@ class PoemModel(object):
         else:
             return logits, outputs[n], outputs[n+1]
 
-    # Some apis for beam search
     #----------------------------------------
+    # Some apis for beam search
     def key_memory_computer(self, session, key_inps, key_mask):
         input_feed = {}
         input_feed[self.keep_prob] = 1.0
@@ -583,13 +584,14 @@ class PoemModel(object):
             input_feed[self.enc_inps[0][l].name] = enc_inps[l]
 
         input_feed[self.enc_mask[0].name] = enc_mask
-        output_feed = [self.encoder_state, self.attn_states]
+        output_feed = [self.enc_state, self.attn_states]
         outputs = session.run(output_feed, input_feed)
         return outputs[0], outputs[1]  # encoder_state, attention_states
         
 
     def decoder_state_computer(self, sess, dec_inp, len_inp, ph_inp, prev_state,
-        attn_states, key_states, his_mem, global_trace, enc_mask, key_mask, his_mem_mask, topic_trace):
+        attn_states, key_states, his_mem, global_trace, enc_mask, key_mask,
+         his_mem_mask, topic_trace):
         input_feed = {}
         input_feed[self.keep_prob] = 1.0
 
@@ -646,7 +648,7 @@ class PoemModel(object):
             input_feed[self.beam_mem_wmask[l]] = mem_write_mask[l]
         input_feed [self.beam_global_trace.name] = global_trace
 
-        output_feed = [self.next_inter_mem, self.next_write_align] 
+        output_feed = [self.next_his_mem] 
         outputs = session.run(output_feed, input_feed)
 
-        return outputs[0], outputs[1]
+        return outputs[0]
