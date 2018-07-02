@@ -36,7 +36,7 @@ hps = HParams(
             ivocab_path="data/train/ivocab.pkl",
             train_data="data/train/train.pkl", # Training data path.
             valid_data="data/train/valid.pkl", # Validation data path.
-            init_emb="data/train/init_emb.npy", # The path of pre-trained word2vec embedding. Set it to '' if none.
+            init_emb="", # The path of pre-trained word2vec embedding. Set it to '' if none.
             model_path="model/" # The path to save checkpoints.
 
         )

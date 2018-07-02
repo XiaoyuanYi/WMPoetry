@@ -37,15 +37,15 @@ class Yun():
         if self.word_map.has_key(last_word):
             twoword = sen[-2]+sen[-1]
             twoword = twoword.encode("utf-8")
-            print twoword
+            #print twoword
             if self.mulword_map.has_key(twoword):
                 return self.mulword_map[twoword]
             threeword = sen[-3]+sen[-2]+sen[-1]
             threeword = threeword.encode("utf-8")
-            print threeword
+            #print threeword
             if self.mulword_map.has_key(threeword):
                 return self.mulword_map[threeword]
-            print last_word
+            #print last_word
             return self.word_map[last_word]
         elif self.yun_dic.has_key(last_word):
             return self.yun_dic[last_word]

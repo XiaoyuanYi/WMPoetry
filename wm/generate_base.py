@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import copy
 import tensorflow as tf
-import cPickle
 from model import PoemModel
 from tool import PoetryTool
 from DataTool import data_tool
@@ -17,6 +16,7 @@ class Generator(object):
         # Construct hyper-parameter
         self.hps = hps
         self.dtool = data_tool
+        self.beam_size = beam_size
         self.tool = PoetryTool(sens_num=hps.sens_num,
             key_slots=hps.key_slots, enc_len=hps.bucket[0],
             dec_len=hps.bucket[1])
@@ -33,19 +33,14 @@ class Generator(object):
         assert PAD_ID > 0
 
         self.hps = self.hps._replace(vocab_size=vocab_size, 
-            PAD_ID=PAD_ID, batch_size=beam_size)
+            PAD_ID=PAD_ID, batch_size=beam_size, mode='decode')
         self.model = PoemModel(self.hps)
-
-        if model_file is None:
-            self.load_model()
-        else:
-            self.load_model_by_path(model_file)
 
         self.EOS_ID, self.PAD_ID, self.GO_ID, self.UNK_ID \
             = self.tool.get_special_IDs()
 
-        self.enc_len = self.hps.buckets[0][0]
-        self.dec_len = self.hps.buckets[0][1]
+        self.enc_len = self.hps.bucket[0]
+        self.dec_len = self.hps.bucket[1]
         self.topic_trace_size = self.hps.topic_trace_size
         self.key_slots = self.hps.key_slots
         self.his_mem_slots = self.hps.his_mem_slots
@@ -54,13 +49,18 @@ class Generator(object):
         self.hidden_size = self.hps.hidden_size
 
         self.sess = tf.InteractiveSession()
-        self.model = self.load_model(self.sess, self.model)
+
+        if model_file is None:
+            self.load_model(self.sess, self.model)
+        else:
+            self.load_model_by_path(self.sess, self.model, model_file)
+
 
         self.__buildPH()
 
     def load_model(self, session, model):
         """load parameters in session."""
-        ckpt = tf.train.get_checkpoint_state(self.hps.model_path+"/")
+        ckpt = tf.train.get_checkpoint_state(self.hps.model_path)
         if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
             print("Reading model parameters from %s" %
                   ckpt.model_checkpoint_path)
@@ -154,7 +154,7 @@ class Generator(object):
 
         key_align = []
         for i in range(beam_size):
-            key_align.append([np.zeros(self.key_slots)], dtype=np.float32)
+            key_align.append(np.zeros([1, self.key_slots], dtype=np.float32))
 
         state = enc_state
         if not (key_initial_state is None):
@@ -271,7 +271,7 @@ class Generator(object):
         prev_history = np.expand_dims(history[0, :], 0)
         #print (np.shape(prev_encoder_state))
         #tt = input(">")
-        new_history = self.model.history_computer(sess, prev_history, enc_states)
+        new_history = self.model.global_trace_computer(sess, prev_history, enc_states)
         new_history = np.tile(new_history, [beam_size, 1])
         return new_history
 
@@ -283,7 +283,7 @@ class Generator(object):
 
         mask = [np.ones((1, 1))] * src_len + [np.zeros((1, 1))] * (np.shape(enc_states)[0]-src_len)
         global_trace = np.expand_dims(ori_global_trace[0, :], 0)
-        new_his_mem  = self.model.his_mem_computer(sess, his_mem, 
+        new_his_mem = self.model.his_mem_computer(sess, his_mem, 
             fin_states, mask, global_trace)
 
         new_his_mem = np.tile(new_his_mem, [beam_size, 1, 1])
@@ -299,14 +299,15 @@ class Generator(object):
         new_topic_trace = np.tile(new_topic_trace, [beam_size, 1])
         return new_topic_trace
 
-    def generate_one(self, keystr, pattern, yun):
+    def generate_one(self, keystr, pattern):
         beam_size = self.beam_size
         sens_num = len(pattern)
         keys = keystr.strip()
         ans, repeatidxes = [], []
-        print ("using keywords: %d" % (keystr))
+        print ("using keywords: %s" % (keystr))
         keys = keystr.split(" ")
         keys_idxes = [self.tool.chars2idxes(self.tool.line2chars(key)) for key in keys]
+        #print (keys_idxes)
         key_inps, key_mask = self.tool.gen_batch_key_beam(keys_idxes, beam_size)
 
         # Calculate initial_key state and key_states
@@ -329,7 +330,7 @@ class Generator(object):
             batch_sen, enc_mask, len_inps = self.tool.gen_batch_beam(sen, trg_len, beam_size)
             trans, costs, align, enc_states = self.beam_search(self.sess, batch_sen, len_inps, key_states,
                 key_initial_state, topic_trace, his_mem, his_mem_mask, global_trace, enc_mask, key_mask,
-                beam_size, repeatidxes, phs)
+                repeatidxes, phs)
 
             trans, costs, align, enc_states = self.pFilter(trans, costs, align, enc_states, trg_len)
             
@@ -337,6 +338,7 @@ class Generator(object):
                 return [], ("line %d generation failed!" % (step+1))
 
             which = 0
+
             his_mem = self.get_new_his_mem(self.sess, his_mem[which, :, :], 
                 enc_states[which], global_trace, beam_size, src_len)
 
@@ -374,6 +376,7 @@ class Generator(object):
             new_trans.append(tran)
             new_align.append(align[i])
             new_states.append(states[i])
+            new_costs.append(costs[i])
 
         return new_trans, new_costs, new_align, new_states
 

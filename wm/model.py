@@ -154,23 +154,20 @@ class PoemModel(object):
         self.beam_key_states = tf.placeholder(tf.float32, 
             shape=[None, self.hps.key_slots, self.hps.hidden_size*2], name="beam_key_states")
         self.beam_global_trace = tf.placeholder(tf.float32, 
-            shape=[None, self.hps.global_trace], name="beam_global_trace")
+            shape=[None, self.hps.global_trace_size], name="beam_global_trace")
         
         self.beam_his_mem = tf.placeholder(tf.float32, 
             [None, self.hps.his_mem_slots, self.hps.his_mem_size], name="beam_his_mem")
         self.beam_his_mem_mask = tf.placeholder(tf.float32, 
             [None, self.hps.his_mem_slots], name="beam_his_mem_mask")
         self.beam_topic_trace = tf.placeholder(tf.float32, 
-            [None, self.hps.trace_size + self.hps.key_slots], name="beam_topic_trace")
+            [None, self.hps.topic_trace_size + self.hps.key_slots], name="beam_topic_trace")
 
         # For history memory write
         self.beam_mem_states = []
-        self.beam_mem_wmask = []
         for i in xrange(self.dec_len):
             self.beam_mem_states.append(tf.placeholder(tf.float32, 
-                shape=[None, self.hidden_size*2],name="beam_mem_states{0}".format(i)))
-            self.beam_mem_wmask.append(tf.placeholder(tf.float32, 
-                shape=[None, 1], name="beam_mem_wmasks{0}".format(i)))
+                shape=[None, self.hps.hidden_size*2],name="beam_mem_states{0}".format(i)))
 
     def build_gen_graph(self):
         print ("using device: %s" % self.hps.device)
@@ -188,23 +185,23 @@ class PoemModel(object):
                 total_attn_states, total_mask, self.beam_global_trace, self.beam_initial_state, [self.emb_genre[0][0]], self.beam_topic_trace)
                     
             self.new_topic_trace = self.__topic_trace_update(self.beam_topic_trace, self.beam_key_align, self.beam_key_states)
-            self.next_global_trace = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
-            self.new_his_mem, _ =  self.__write_memory(self.beam_his_mem, 
-            self.beam_enc_states, self.beam_global_trace, 0)
+            self.new_global_trace = self.__global_trace_update(self.beam_global_trace, self.beam_attn_states)
+            self.new_his_mem =  self.__write_memory(self.beam_his_mem, 
+                self.beam_mem_states, self.beam_global_trace, 0)
 
     def build_train_graph(self):
         print ("using device: %s" % self.hps.device)
         with tf.device(self.hps.device):
 
-            normed_outs_vec, loss_vec, write_debug_vec = self.__build_graph()
+            normed_outs_vec, loss_vec = self.__build_graph()
 
             params = tf.trainable_variables()
                 
             regularizers = []
-            print(len(params))
+            #print(len(params))
             for param in params:
-                name = param.name
-                print (name)
+                #name = param.name
+                #print (name)
                 regularizers.append(tf.nn.l2_loss(param))
                 
             regular_loss = math_ops.reduce_sum(regularizers)
@@ -219,9 +216,7 @@ class PoemModel(object):
             
             # fetch
             self.gen_loss = gen_loss
-            self.l2_loss = regular_loss
             self.outputs = normed_outs_vec
-            self.wdvec = write_debug_vec
 
     def __build_graph(self):
         with tf.variable_scope("graph"):
@@ -238,14 +233,13 @@ class PoemModel(object):
             his_mem_mask = tf.constant(self.zeros)
             
             normed_outs_vec, loss_vec = [], []
-            write_debug_vec = [[], []]
             
             for step in xrange(0, self.hps.sens_num):
                 if step > 0:
                         key_initial_state = None
                         variable_scope.get_variable_scope().reuse_variables()
                 normed_outs, loss, global_trace, his_mem, topic_trace, \
-                attn_weights, wb1, wb2 = self.__build_seq2seq(global_trace, key_initial_state, 
+                attn_weights = self.__build_seq2seq(global_trace, key_initial_state, 
                     key_states, his_mem, his_mem_mask, topic_trace, step)
 
                 if step >=1:
@@ -255,9 +249,7 @@ class PoemModel(object):
 
                 normed_outs_vec.append(normed_outs)
                 loss_vec.append(tf.identity(loss))
-                write_debug_vec[0].append(wb1)
-                write_debug_vec[1].append(wb2)
-            return normed_outs_vec, loss_vec, write_debug_vec
+            return normed_outs_vec, loss_vec
 
     def __build_seq2seq(self, global_trace, key_initial_state, key_states, 
         his_mem, his_mem_mask, topic_trace, step):
@@ -281,11 +273,10 @@ class PoemModel(object):
         key_align = math_ops.reduce_mean(key_align, axis=0)
         new_topic_trace = self.__topic_trace_update(topic_trace, key_align, key_states)
 
-        new_his_mem, wb1, wb2 = self.__write_memory(his_mem, enc_outs, global_trace, step)
+        new_his_mem = self.__write_memory(his_mem, enc_outs, global_trace, step)
         new_global_trace = self.__global_trace_update(global_trace, attn_states)
         loss = sequence_loss(dec_outs, self.targets[step][: self.dec_len], self.trg_weights[step][ : self.dec_len])
-        return normed_dec_outs, loss, new_global_trace, new_his_mem,\
-            new_topic_trace, attn_weights, wb1, wb2
+        return normed_dec_outs, loss, new_global_trace, new_his_mem, new_topic_trace, attn_weights
 
     def __build_key_memory(self):
         #print ("memory")
@@ -310,7 +301,7 @@ class PoemModel(object):
 
         return final_state, key_states
             
-    def __build_encoder(self, step, length):
+    def __build_encoder(self, step):
 
         with variable_scope.variable_scope("EncoderRNN", reuse=True):
             (outputs , enc_state_fw, enc_state_bw)  = rnn.static_bidirectional_rnn(
@@ -410,8 +401,6 @@ class PoemModel(object):
         with variable_scope.variable_scope("write_memory"):
             mem_slots = his_mem.get_shape()[1].value
             mem_size = his_mem.get_shape()[2].value
-            
-            wb1, wb2= [], []
 
             for i, state in enumerate(enc_states):
                 if i > 0:
@@ -472,10 +461,7 @@ class PoemModel(object):
                 #print (final_mask.get_shape())
                 his_mem = (1.0 - final_mask) * his_mem + final_mask * w_states
 
-                wb1.append(a)
-                wb2.append(float_mask)
-
-            return his_mem, wb1, wb2
+            return his_mem
 
     def __topic_trace_update(self, topic_trace, key_align, key_states):
         with variable_scope.variable_scope("topic_trace_update"):
@@ -546,9 +532,9 @@ class PoemModel(object):
                 output_feed.append(self.outputs[step][l])
 
         if not forward_only:
-            output_feed += [self.update, self.gen_loss, self.l2_loss, self.wdvec[1][1], self.wdvec[1][2], self.gradients] 
+            output_feed += [self.update, self.gen_loss] 
         else:
-            output_feed += [self.gen_loss, self.l2_loss]  # Loss for this batch.
+            output_feed += [self.gen_loss]  # Loss for this batch.
 
         outputs = session.run(output_feed, input_feed)
 
@@ -558,9 +544,9 @@ class PoemModel(object):
 
         n = self.dec_len * self.hps.sens_num
         if not forward_only:
-            return logits, outputs[n+1], outputs[n+2], (outputs[n+3], outputs[n+4]), outputs[n+5]
+            return logits, outputs[n+1]
         else:
-            return logits, outputs[n], outputs[n+1]
+            return logits, outputs[n]
 
     #----------------------------------------
     # Some apis for beam search
@@ -610,7 +596,7 @@ class PoemModel(object):
         input_feed[self.beam_his_mem.name] = his_mem
         input_feed[self.beam_his_mem_mask.name] = his_mem_mask
 
-        output_feed = [self.next_output[0], self.next_state[0], self.next_align[0][0]]
+        output_feed = [self.next_out[0], self.next_state[0], self.next_align[0][0]]
 
         outputs = sess.run(output_feed, input_feed)
 
@@ -622,7 +608,7 @@ class PoemModel(object):
         input_feed[self.beam_key_states.name] = key_states
         input_feed[self.beam_topic_trace.name] = prev_topic_trace
         input_feed[self.beam_key_align.name] = key_align
-        output_feed = [self.next_topic_trace]
+        output_feed = [self.new_topic_trace]
 
         outputs = session.run(output_feed, input_feed)
         return outputs[0]
@@ -632,7 +618,7 @@ class PoemModel(object):
         input_feed[self.keep_prob] = 1.0
         input_feed [self.beam_global_trace] = prev_global_trace
         input_feed[self.beam_attn_states] = prev_attn_states
-        output_feed = [self.next_global_trace]
+        output_feed = [self.new_global_trace]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -645,10 +631,10 @@ class PoemModel(object):
 
         for l in xrange(self.enc_len):
             input_feed[self.beam_mem_states[l]] = prev_enc_states[l]
-            input_feed[self.beam_mem_wmask[l]] = mem_write_mask[l]
+            input_feed[self.write_masks[0][l]] = mem_write_mask[l]
         input_feed [self.beam_global_trace.name] = global_trace
 
-        output_feed = [self.next_his_mem] 
+        output_feed = [self.new_his_mem] 
         outputs = session.run(output_feed, input_feed)
 
         return outputs[0]

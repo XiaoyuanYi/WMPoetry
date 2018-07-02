@@ -116,10 +116,6 @@ class PoetryTool(object):
         train_data, valid_data = \
             self.load_data(trainfile, validfile)
 
-        #TMP
-        train_data = train_data[0:1000]
-        valid_data = valid_data[0:200]
-
         train_batches, train_batch_num = self.build_batches(
             train_data, batch_size) 
         valid_batches, valid_batch_num = self.build_batches(
@@ -281,13 +277,11 @@ class PoetryTool(object):
         return sentence
 
     def gen_batch_beam(self, sentence, trg_len, batch_size):
-        inputs = [sentence] * batch_size
         enc_inps, len_inps, enc_mask = [], [], []
         trg_len += 1
 
-        for i in xrange(len(inputs)):
-            enc_inp = inputs[i]  
-
+        for i in xrange(0, batch_size):
+            enc_inp = sentence
             enc_pad_size = self.__enc_len - len(enc_inp)
             enc_pad = [self.__PAD_ID] * enc_pad_size
             enc_inps.append(enc_inp + enc_pad)
@@ -295,7 +289,7 @@ class PoetryTool(object):
             mask = np.reshape(mask, [self.__enc_len,1])
             enc_mask.append(mask)
 
-            dec_pad_size = self.dec_len - trg_len - 1
+            dec_pad_size = self.__dec_len - trg_len - 1
             len_inp = range(trg_len+1, 0, -1) + [0]*(dec_pad_size)
             len_inps.append(len_inp)
 

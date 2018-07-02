@@ -36,6 +36,7 @@ class PoemTrainer(object):
         vocab_size = self.tool.get_vocab_size()
         assert vocab_size > 0
         PAD_ID = self.tool.get_PAD_ID()
+        print (PAD_ID)
         assert PAD_ID > 0
 
         self.hps = self.hps._replace(vocab_size=vocab_size, PAD_ID=PAD_ID)
@@ -43,7 +44,7 @@ class PoemTrainer(object):
         print("Params  sets: ")
         print (self.hps)
         print("___________________")
-        raw_input("Please confirm the parameters and press enter to continue>")
+        raw_input("Please check the parameters and press enter to continue>")
 
 
     def create_model(self, session, model):
@@ -89,7 +90,11 @@ class PoemTrainer(object):
                 outline = [c[idx] for c in outputs[step]]
                 outline = self.tool.greedy_search(outline)
 
-                print(sline.ljust(30) + " # " + tline.ljust(34) + " # " + outline.ljust(34) + " # ")
+                if step == 0:
+                    print(sline.ljust(25) + " # " + tline.ljust(30) + " # " + outline.ljust(30) + " # ")
+                else:
+                    print(sline.ljust(30) + " # " + tline.ljust(30) + " # " + outline.ljust(30) + " # ")
+
 
     def run_validation(self, sess, model, valid_batches, valid_batch_num, epoch):
         print("run validation...")
@@ -129,40 +134,25 @@ class PoemTrainer(object):
 
             for epoch in xrange(1, self.hps.max_epoch+1):
                 total_gen_loss = 0.0
-                total_l2_loss = 0.0
                 time1 = time.time()
 
                 for step in xrange(0, train_batch_num):
                     batch = train_batches[step]
-                    outputs, gen_loss, l2_loss, (wb1, wb2), grads = model.step(sess, batch, False)
+                    outputs, gen_loss = model.step(sess, batch, False)
                     total_gen_loss += gen_loss
-                    total_l2_loss += l2_loss
 
                     if step % self.hps.steps_per_train_log == 0:
-                        db1 = np.array(wb1)[0:6, 0, :, 0]
-                        db2 = np.array(wb2)[0:6, 0, :, 0]
-                        print (np.round(db1, 3))
-                        print (np.round(db2, 3))
-                        
-                        grad = []
-                        for g in grads[3:]:
-                            v1 = np.sum(np.abs(g))
-                            grad.append(v1)
-                        print (grad[-7:])
-                        #print (grad)
-
                         time2 = time.time()
                         time_cost = float(time2-time1) / self.hps.steps_per_train_log
                         time1 = time2
-                        process_info = "epoch: %d, %d/%d %.3f%%, %f s per iter" % (epoch, step, train_batch_num,
+                        process_info = "epoch: %d, %d/%d %.3f%%, %.3f s per iter" % (epoch, step, train_batch_num,
                             float(step+1) /train_batch_num * 100, time_cost)
                         
 
                         self.sample(batch['enc_inps'], batch['dec_inps'], batch['key_inps'], outputs)
                         current_gen_loss = total_gen_loss / (step+1)
-                        current_l2_loss = total_l2_loss / (step+1)
                         ppl = math.exp(current_gen_loss) if current_gen_loss < 300 else float('inf')
-                        train_info = "train loss: %.3f  ppl:%.2f  l2 loss: %.3f" % (current_gen_loss, ppl, current_l2_loss)
+                        train_info = "train loss: %.3f  ppl:%.2f" % (current_gen_loss, ppl)
                         print (process_info)
                         print(train_info)
                         print("______________________")

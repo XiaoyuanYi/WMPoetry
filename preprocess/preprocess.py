@@ -7,6 +7,17 @@ import random
 from Yun import Yun as YunTool
 from GL import GLJudge as GLTool
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="The parametrs for preprocessing.")
+    parser.add_argument("--inp", required=True, type=str, help="The input file path")
+    parser.add_argument("--vratio", required=True, type=float, help="The percentage of validation set.")
+    parser.add_argument("--tratio", required=True, type=float, help="The percentage of testing set.")
+    parser.add_argument("--vout", required=True, type=str, help="The validation file name.")
+    parser.add_argument("--tout", required=True, type=str, help="The testing file name.")
+    parser.add_argument("--trout", required=True, type=str, help="The training file name.")
+    return parser.parse_args()
+
+
 class Preporcess(object):
     """
     A Tool for data preprocess.  Please note that this tool
@@ -216,7 +227,7 @@ class Preporcess(object):
 
         return pair
 
-    def process(self, infile, outfile):
+    def process(self, infile, trfile, vfile, tfile, vratio, tratio):
         fin = open(infile, 'r')
         lines = fin.readlines()
         fin.close()
@@ -280,15 +291,53 @@ class Preporcess(object):
         print ("outputing...")
         
         random.shuffle(corpus)
-        fout = open(outfile, 'w')
-        for pair in corpus:
-            fout.write(pair+"\n")
+        n = len(corpus)
+        n_valid = int(n*vratio)
+        n_test = int(n*(tratio))
+
+        valid = corpus[0:n_valid]
+        test = corpus[n_valid:n_valid+n_test]
+        train = corpus[n_test+n_valid:]
+
+        print ("training size: %d, validation size: %d, testing size: %d" %
+         (len(train), len(valid), len(test)))
+
+        outFile(trfile, train)
+        outFile(vfile, valid)
+        outFile(tfile, test)
+
+        self.outCheckLib(train)
+
+    def outCheckLib(self, data):
+        dic = {}
+        for line in data:
+            para = line.split("#")
+            sens = para[1].split("|")
+            for sen in sens:
+                dic[sen] = 1
+        fout = open("DuplicateCheckLib.txt", 'w')
+        for k, v in dic.iteritems():
+            fout.write(k+"\n")
         fout.close()
-        
+ 
+def outFile(filename, data):
+    fout = open(filename, 'w')
+    for pair in data:
+        fout.write(pair+"\n")
+    fout.close()
+
+
 
 def main():
+    args = parse_args()
     tool = Preporcess()
-    tool.process("train_big.txt", "train_big_yun.txt")
+    infile = args.inp
+    vfile = args.vout
+    tfile = args.tout
+    trfile = args.trout
+    vratio = args.vratio
+    tratio = args.tratio
+    tool.process(infile, trfile, vfile, tfile, vratio, tratio)
 
 
 

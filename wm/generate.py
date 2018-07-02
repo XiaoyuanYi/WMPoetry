@@ -9,12 +9,12 @@ from DataTool import data_tool
 
 def parse_args():
     parser = argparse.ArgumentParser(description="The parametrs for the generator.")
-    parser.add_argument("--inp", '-o', type=str, help="The input file path, for file generation.")
-    parser.add_argument("--out", '-o', type=str, help="The output file path, for file generation.")
-    parser.add_argument("--type", type=str, choices=['one', 'file'], 
+    parser.add_argument("--inp", type=str, help="The input file path, for file generation.")
+    parser.add_argument("--out", type=str, help="The output file path, for file generation.")
+    parser.add_argument("--type",  required=True, type=str, choices=['one', 'file'], 
         help='The mode. one: just generate one poem; file: generate by the input file.')
-    parser.add_argument("--model", '-o', type=str, help="The checkpoint path. If none, just use the newest checkpoint.")
-    parser.add_argument("--bsize", type=int, help="The beam size.")
+    parser.add_argument("--model", type=str, help="The checkpoint path. If none, just use the newest checkpoint.")
+    parser.add_argument("--bsize",  required=True, type=int, help="The beam size.")
     return parser.parse_args()
 
 
@@ -24,17 +24,24 @@ class GeneratorUI(object):
         self.generator = Generator(beam_size, modelfile)
         self.dtool = data_tool
 
+    def __setYun2Pattern(self, ori_pattern, yun):
+        pattern = copy.deepcopy(ori_pattern)
+        for i in xrange(0, len(pattern)):
+            if pattern[i][-1] == 36 or pattern[i][-1] == 37:
+                pattern[i][-1] = yun
+        return pattern
 
     def generate_one(self):
         while True:
             keys = raw_input("please input keywords (with whitespace split) > ")
-            pattern_id = input("please select  genre pattern > ")
+            pattern_id = input("please select genre pattern > ")
             yun = input("please input yun type> ")
-            pattern = self.dtool.getPattern(pattern_id)
-            pattern = pattern[1]
-            name = pattern[0]
+            ori_pattern = self.dtool.getPattern(pattern_id)
+            pattern = ori_pattern[1]
+            name = ori_pattern[0]
+            pattern = self.__setYun2Pattern(pattern, yun)
             print ("select pattern: %s" % (name))
-            ans, info = self.generator.generate_one(keys, pattern, yun)
+            ans, info = self.generator.generate_one(keys, pattern)
             if len(ans) == 0:
                 print("generation failed!")
                 print(info)
@@ -53,8 +60,7 @@ class GeneratorUI(object):
         #print (patterns)
         return patterns
 
-    
-    def generate_specify_file(self, infile, outfile):
+    def generate_file(self, infile, outfile):
 
         fin = open(infile, 'r')
         lines = fin.readlines()
@@ -63,12 +69,13 @@ class GeneratorUI(object):
         fout = open(outfile, 'w')
         for i, line in enumerate(lines):
             line = line.strip()
-            para = line.split("|")
+            para = line.split("#")
             wstr = para[0].strip()
             print ("%d  keys: %s" % (i, wstr))
-            pattern = self.modiPattern(para[1:])
+            pattern_str = para[2].split("|")
+            pattern = self.modiPattern(pattern_str)
 
-            sens, info = self.generator.generate_specify(wstr, pattern, beam_size)
+            sens, info = self.generator.generate_one(wstr, pattern)
             if len(sens) == 0:
                 fout.write(info + "\n")
             else:
@@ -87,7 +94,7 @@ def main():
     if args.type == 'one':
         ui.generate_one()
     elif args.type == 'file':
-        ui.generate_specify_file(args.infile, args.outfile)
+        ui.generate_file(args.inp, args.out)
     
 if __name__ == "__main__":
     main()
