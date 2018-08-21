@@ -1,5 +1,5 @@
 # WMPoetry
-Code for *Chinese Poetry Generation with a Working Memory Model*.
+Code for [*Chinese Poetry Generation with a Working Memory Model*](https://www.ijcai.org/proceedings/2018/0633.pdf).
 ## 0. Rights
 All rights reserved.
 ## 1. Requirements
@@ -18,9 +18,7 @@ To train the model and generate poems, we provide some necessary data files as f
 
 We also provide a small corpus with 25,000 Chinese quatrains for testing this code.
 
-All these data files are avaliable in：
-
-https://drive.google.com/drive/folders/1YrIC9hUAZ1LRceRPXnpsdtorjIrvJeQy?usp=sharing
+All these data files are avaliable [here](https://drive.google.com/drive/folders/1YrIC9hUAZ1LRceRPXnpsdtorjIrvJeQy?usp=sharing).
 
 You can also use your own data.
 
@@ -101,11 +99,11 @@ The second interface is to generate poems according to the whole testing set:
 python generate.py --type file --bsize 20 --inp test.txt --out output.txt
 ```
 ## 6. System
-This work has been integrated into THUNL automatic poetry generation system, **Jiuge (九歌)**, which is available via https://jiuge.thunlp.cn. 
+This work has been integrated into THUNLP automatic poetry generation system, **Jiuge (九歌)**, which is available via https://jiuge.thunlp.cn. 
 
-<div align=center><img width="180" height="180" src="pictures/logo.png"/></div>
+<div align=center><img width="190" height="180" src="pictures/logo.png"/></div>
 
 ## 7. Citation
-Chinese Poetry Generation with a Working Memory Model. Xiaoyuan Yi, Maosong Sun, Ruoyu Li, Zonghan Yang. In Proceedings of IJCAI 2018.
+ Xiaoyuan Yi, Maosong Sun, Ruoyu Li, Zonghan Yang. Chinese Poetry Generation with a Working Memory Model. *In Proceedings of the Twenty-Seventh International Joint Conference on Artificial Intelligence*, pages 4553–4559, Stockholm, Sweden, 2018.
 ## 8. Contact
 If you have any questions, suggestions and bug reports, please feel free to email yi-xy16@mails.tsinghua.edu.cn or mtmoonyi@gmail.com.
