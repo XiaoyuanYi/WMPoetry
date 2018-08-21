@@ -100,8 +100,12 @@ The second interface is to generate poems according to the whole testing set:
 ```
 python generate.py --type file --bsize 20 --inp test.txt --out output.txt
 ```
+## 6. System
+This work has been integrated into THUNL automatic poetry generation system, ** *Jiuge* (九歌)**, which is available via https://jiuge.thunlp.cn. 
 
-## 6. Citation
+<div align=center><img width="180" height="180" src="pictures/logo.png"/></div>
+
+## 7. Citation
 Chinese Poetry Generation with a Working Memory Model. Xiaoyuan Yi, Maosong Sun, Ruoyu Li, Zonghan Yang. In Proceedings of IJCAI 2018.
-## 7. Contact
+## 8. Contact
 If you have any questions, suggestions and bug reports, please email yi-xy16@mails.tsinghua.edu.cn or mtmoonyi@gmail.com.
