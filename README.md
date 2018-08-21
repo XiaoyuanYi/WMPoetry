@@ -101,7 +101,7 @@ The second interface is to generate poems according to the whole testing set:
 python generate.py --type file --bsize 20 --inp test.txt --out output.txt
 ```
 ## 6. System
-This work has been integrated into THUNL automatic poetry generation system, ** *Jiuge* (九歌)**, which is available via https://jiuge.thunlp.cn. 
+This work has been integrated into THUNL automatic poetry generation system, ** Jiuge (九歌)**, which is available via https://jiuge.thunlp.cn. 
 
 <div align=center><img width="180" height="180" src="pictures/logo.png"/></div>
 
