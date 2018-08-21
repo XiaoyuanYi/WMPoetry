@@ -108,4 +108,4 @@ This work has been integrated into THUNL automatic poetry generation system, **J
 ## 7. Citation
 Chinese Poetry Generation with a Working Memory Model. Xiaoyuan Yi, Maosong Sun, Ruoyu Li, Zonghan Yang. In Proceedings of IJCAI 2018.
 ## 8. Contact
-If you have any questions, suggestions and bug reports, please email yi-xy16@mails.tsinghua.edu.cn or mtmoonyi@gmail.com.
+If you have any questions, suggestions and bug reports, please feel free to email yi-xy16@mails.tsinghua.edu.cn or mtmoonyi@gmail.com.
