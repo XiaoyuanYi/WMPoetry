@@ -99,16 +99,13 @@ class PoemTrainer(object):
     def run_validation(self, sess, model, valid_batches, valid_batch_num, epoch):
         print("run validation...")
         total_gen_loss = 0.0
-        total_l2_loss = 0.0
         for step in xrange(0, valid_batch_num):
             batch = valid_batches[step]
-            outputs, gen_loss, l2_loss = model.step(sess, batch, True)
+            outputs, gen_loss = model.step(sess, batch, True)
             total_gen_loss += gen_loss
-            total_l2_loss += l2_loss
         total_gen_loss /= valid_batch_num
-        total_l2_loss /= valid_batch_num
-        info = "validation epoch: %d  loss: %.3f  ppl: %.2f  l2 loss: %.4f" % \
-            (epoch, total_gen_loss, np.exp(total_gen_loss), total_l2_loss)
+        info = "validation epoch: %d  loss: %.3f  ppl: %.2f" % \
+            (epoch, total_gen_loss, np.exp(total_gen_loss))
         print (info)
         fout = open("validlog.txt", 'a')
         fout.write(info + "\n")
