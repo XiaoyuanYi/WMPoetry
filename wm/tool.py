@@ -16,10 +16,8 @@ class PoetryTool(object):
     
     def line2chars(self, line):
         '''Split line to characters and save as list'''
-        line = line.decode("utf-8")
-        chars = []
-        for c in line:
-            chars.append(c.encode("utf-8"))
+        line = line.strip()
+        chars = [c for c in line]
         return chars
 
     def chars2idxes(self, chars):

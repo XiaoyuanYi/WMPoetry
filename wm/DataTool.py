@@ -17,7 +17,7 @@ class DataTool(object):
 
     def __init__(self):
         self.__root_dir = os.path.dirname(os.path.realpath(__file__)) + "/"
-        self.__loadPoemLib("data/other/DuplicateCheckLib.txt")
+        #self.__loadPoemLib("data/other/DuplicateCheckLib.txt")
         self.__loadGL("data/other/pingsheng.txt",
             "data/other/zesheng.txt")
         self.__loadYun("data/other/cilinList.txt")
