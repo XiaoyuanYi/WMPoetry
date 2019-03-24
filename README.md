@@ -95,7 +95,7 @@ In WMPoetry/wm, run:
 python train.py
 ```
 
-The model will load pre-trained parameters of the encoder, decoder and embeddings from the checkpoints in the premodel path. If one doesn't need pre-training, please skip the pre-training step and set set:
+The model will load pre-trained parameters of the encoder, decoder and embeddings from the checkpoints in the premodel path. If one doesn't need pre-training, please skip the pre-training step and set:
 ```
 self.__use_pretrain = False
 ```
