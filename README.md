@@ -51,7 +51,7 @@ python preprocess.py --inp train.txt --out train_keys.txt --cl 1
 ```
 One can get the processed files: train_keys.txt, valid_keys.txt and test_keys.txt.
 
-NOTE: By running preprocess.py on the training file (train.txt), one can also get a file, DuplicateCheckLib.txt (by setting --cl as 1), which contains all different lines in the training set. When generating poems, we will remove the generated candidates which are already in DuplicateCheckLib.txt. This DuplicateCheckLib.txt is also used to build the dictionary.
+NOTE: By running preprocess.py on the training file (train.txt), one can also get a file, DuplicateCheckLib.txt (by setting --cl to 1), which contains all different lines in the training set. When generating poems, we will remove the generated candidates which are already in DuplicateCheckLib.txt. This DuplicateCheckLib.txt is also used to build the dictionary.
 
 ### 4.3. Binarization
 
