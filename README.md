@@ -3,7 +3,7 @@ The source code for [*Chinese Poetry Generation with a Working Memory Model*](ht
 
 ## 0. Notice
 * We update the environment from python 2.7 & Tensorflow 1.4 to python 3.6.5 & Tensorflow 1.10.
-* The source code has been reconstructed in a better and code style.
+* The source code has been reconstructed in a better coding style.
 * We also improve several implementation details.
 
 ## 1. Rights
