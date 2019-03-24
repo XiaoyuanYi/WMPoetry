@@ -2,7 +2,7 @@
 The Source Code for [*Chinese Poetry Generation with a Working Memory Model*](https://www.ijcai.org/proceedings/2018/0633.pdf) (IJCAI 2018).
 
 ## 0. Notice
-* We update environment from python 2.7 & Tensorflow 1.4 to python 3.6.5 & Tensorflow 1.10.
+* We update the environment from python 2.7 & Tensorflow 1.4 to python 3.6.5 & Tensorflow 1.10.
 * The source code has been reconstructed in a better and code style.
 * We also improve several implementation details.
 
