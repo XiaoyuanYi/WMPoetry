@@ -105,17 +105,14 @@ class PoetryTool(object):
         corpus = pickle.load(corpus_file)
         corpus_file.close()
 
-        # TMP
-        corpus = corpus[0:500]
-
         if mode == 'train':
             batches, batch_num = self.build_batches(corpus, batch_size) 
         elif mode == 'pre_train':
-            batches, batch_num = self.build_ae_batches(corpus, batch_size) 
+            batches, batch_num = self.build_pre_batches(corpus, batch_size) 
 
         return batches, batch_num
 
-    def build_ae_batches(self, data, batch_size):
+    def build_pre_batches(self, data, batch_size):
         batched_data = []
         batch_num = int(np.ceil(len(data) / float(batch_size)))  
         for bi in range(0, batch_num):
