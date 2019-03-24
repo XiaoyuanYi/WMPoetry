@@ -1,42 +1,38 @@
 #coding=utf-8
 from __future__ import division
 '''
-Created on 2015.10.31
+Created on 2015年10月31日
+
 @author: Ruoyu Li
 '''
 
 class GLJudge(object):
     '''
-    Get the tonal pattern of a poem line
+    获取一首诗的格律
     '''
     def __init__(self):
         '''
         Constructor
         '''
-        print "loading pingsheng.txt"
+        
+        # 读入平声字文件
+        print ("loading ping and ze dict.txt")
         f = open("data/pingsheng.txt",'r')
         self.__ping = f.read()
-        #print type(self.__ping)
+        #print (type(self.__ping))
         f.close()
-        self.__ping = self.__ping.decode("utf-8")
+        self.__ping = self.__ping
+        #print self.__ping
         f = open("data/zesheng.txt",'r')
         self.__ze = f.read()
         f.close()
-        #print type(self.__ze)
-        self.__ze = self.__ze.decode("utf-8")
-        
-        
+        #print (type(self.__ze))
+        self.__ze = self.__ze
         
     def gelvJudge(self, sentence):
-        '''
-        Get the tonal pattern of a poem line
-        Input: a sentence with 5 or 7 character.
-                   The input sequence must be unicode
-        Output: the tonal pattern, 0~3
-        '''
         # print "#" + sentence + "#"
         if(len(sentence) == 5):
-            #1
+			#1
             if(sentence[0] in self.__ping and sentence[1] in self.__ping and sentence[2] in self.__ping and sentence[3] in self.__ze and sentence[4] in self.__ze):
                 return 0
             #2
