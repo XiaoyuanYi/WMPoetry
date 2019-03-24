@@ -32,7 +32,7 @@ You can also use your own data.
 
 ### 4.1. Word Segmentation
 
-At first, one needs to move all the downloaded files to WMPoetry/preprocess/data/, then to segment the corpus and save the poems with whitespace separating words and with '|' separating sentences. The segmented corpus file should look like:
+At first, one needs to move all the downloaded files to WMPoetry/preprocess/data/, then to segment the corpus with any released segmentation tool. Then save the poems with whitespace separating words and with '|' separating sentences. The segmented corpus file should look like:
 
 ![blockchain](pictures/p1.png)
 
