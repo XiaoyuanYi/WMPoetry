@@ -70,7 +70,7 @@ python binarize.py -i train_keys.txt -b train.pickle -d vocab.pickle
 ### 4.4. Before Training and Generation
 
 Before training and generation, please:
-1. move test_keys.txt to WMPoetry/wm;
+1. move test_keys.txt to WMPoetry/wm/;
 2. move train.pickle, valid.pickle, vocab.pickle and ivocab.pickle to WMPoetry/wm/train/;
 3. move pingsheng.txt, zesheng.txt and cilinList.txt to WMPoetry/wm/other/;
 4. move DuplicateCheckLib.txt, GenrePatterns.txt and fchars.txt to WMPoetry/wm/other/.
