@@ -41,7 +41,7 @@ In this file, each line is a poem. The provided small corpus has been segmented 
 ### 4.2. Keywords Extraction and Genre Pattern Building
 At first, one needs to manually divide the whole corpus file into training file, validation file and testing file. For example, we use 2,3000 poem in our small corpus as the training file, train.txt and 1,000 as the validation file, valid.txt and 1,000 as the testing file, test.txt.
 
-We provide a script to extract keywords and build genre pattern, **only for Chinese quatrains**. For other genres, such as lyrics and Song iambics, the scripts will be released in the future.
+We provide a script to extract keywords and build genre patterns, **only for Chinese quatrains**. For other genres, such as lyrics and Song iambics, the scripts will be released in the future.
 
 Put the segmented corpus file (e.g., train.txt, valid.txt and test.txt) into WMPoetry/preprocess/, then in WMPoetry/preprocess/, run:
 ```
