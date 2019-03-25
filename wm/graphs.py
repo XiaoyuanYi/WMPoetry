@@ -66,8 +66,6 @@ class WorkingMemoryModel(object):
                 [None], keep_prob=self.keep_prob, name='mlp_dec_merge')
             self.layers['mlp_topic_trace'] = layers_lib.MLPLayer([self.hps.topic_trace_size], 
                 ['tanh'], keep_prob=self.keep_prob, name='mlp_topic_trace')
-            self.layers['mlp_global_trace'] = layers_lib.MLPLayer([self.hps.global_trace_size], 
-                ['tanh'], keep_prob=self.keep_prob, name='mlp_global_trace')
             self.layers['mlp_init_null'] = layers_lib.MLPLayer([self.hps.hidden_size], 
                 [None], keep_prob=self.keep_prob, name='mlp_init_null')
 
