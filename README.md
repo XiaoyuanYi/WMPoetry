@@ -131,8 +131,10 @@ This work has been integrated into THUNLP automatic poetry generation system, **
 
 <div align=center><img width="190" height="180" src="pictures/logo.png"/></div>
 
-## 8. Citation
- Xiaoyuan Yi, Maosong Sun, Ruoyu Li, Zonghan Yang. Chinese Poetry Generation with a Working Memory Model. *In Proceedings of the Twenty-Seventh International Joint Conference on Artificial Intelligence*, pages 4553–4559, Stockholm, Sweden, 2018.
+## 8. Cite
+If you use this code for your research, please kindly cite this paper:
+
+Xiaoyuan Yi, Maosong Sun, Ruoyu Li and Zonghan Yang. Chinese Poetry Generation with a Working Memory Model. *In Proceedings of the Twenty-Seventh International Joint Conference on Artificial Intelligence*, pages 4553–4559, Stockholm, Sweden, 2018.
 
 The bib format is as follows:
 ```
