@@ -127,9 +127,9 @@ The second interface is to generate poems according to the whole testing file:
 python gen_ui.py -t file -b 20 -i test_keys.txt -o output.txt
 ```
 ## 7. System
-This work has been integrated into the automatic poetry generation system, ** THUAIPoet(Jiuge, 九歌)**, which is available via https://jiuge.thunlp.cn.  This system is developed by Research Center for Natural Language Processing, Computational Humanities and Social Sciences, Tsinghua University (清华大学人工智能研究院与社会人文计算研究中心). Please refer to [THUAIPoet](https://github.com/THUNLP-AIPoet), [THUNLP](https://github.com/thunlp) and [THUNLP Lab](http://nlp.csai.tsinghua.edu.cn/site2/) for more information.
+This work has been integrated into the automatic poetry generation system, ** THUAIPoet(Jiuge, 九歌)**, which is available via https://jiuge.thunlp.cn.  This system is developed by Research Center for Natural Language Processing, Computational Humanities and Social Sciences, Tsinghua University (清华大学人工智能研究院，自然语言处理与社会人文计算研究中心). Please refer to [THUAIPoet](https://github.com/THUNLP-AIPoet), [THUNLP](https://github.com/thunlp) and [THUNLP Lab](http://nlp.csai.tsinghua.edu.cn/site2/) for more information.
 
-<div align=center><img width="190" height="180" src="pictures/logo.png"/></div>
+<div align=center><img width="190" height="180" src="pictures/logo.jpg"/></div>
 
 ## 8. Cite
 If you use our code, please kindly cite this paper:
