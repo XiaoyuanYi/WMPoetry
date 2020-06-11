@@ -12,6 +12,8 @@ All rights reserved.
 * python==3.6.5
 * TensorFlow==1.10
 
+A pytorch version of our model is available [here](https://github.com/THUNLP-AIPoet/WMPoetry).
+
 ## 3. Data Preparations
 To train the model and generate poems, we provide some necessary data files as follows:
 

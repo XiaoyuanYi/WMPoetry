@@ -3,7 +3,7 @@ from collections import namedtuple
 
 HParams = namedtuple('HParams',
                      'vocab_size, emb_size, ph_emb_size, len_emb_size,'
-                     'hidden_size, mem_size, his_mem_slots,' 
+                     'hidden_size, mem_size, his_mem_slots,'
                      'global_trace_size, topic_trace_size, key_slots, sens_num, device, learning_rate,'
                      'bucket, max_gradient_norm, batch_size,'
                      'epoches_per_checkpoint, epoches_per_validate, steps_per_train_log,'
